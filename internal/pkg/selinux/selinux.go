@@ -7,7 +7,6 @@ package selinux
 
 import (
 	"bytes"
-	_ "embed"
 	"log"
 	"os"
 	"path/filepath"
@@ -23,8 +22,7 @@ import (
 	"github.com/siderolabs/talos/pkg/xfs"
 )
 
-//go:embed policy/policy.33
-var policy []byte
+const policyDir = "/usr/share/selinux/talos"
 
 // IsEnabled checks if SELinux is enabled on the system by reading
 // the kernel command line. It returns true if SELinux is enabled,
@@ -207,11 +205,21 @@ func Init() error {
 
 	log.Println("selinux: loading policy")
 
-	if err := os.WriteFile("/sys/fs/selinux/load", policy, 0o777); err != nil {
+	policy, err := os.ReadFile(filepath.Join(policyDir, "policy.33"))
+	if err != nil {
+		return err
+	}
+
+	if err = LoadPolicy(policy); err != nil {
 		return err
 	}
 
 	log.Println("selinux: policy loaded")
 
 	return nil
+}
+
+// LoadPolicy loads the binary policy into the kernel.
+func LoadPolicy(policy []byte) error {
+	return os.WriteFile("/sys/fs/selinux/load", policy, 0o777)
 }
