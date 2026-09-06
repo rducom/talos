@@ -504,6 +504,38 @@ func (SecurityProfileConfigV1Alpha1) Doc() *encoder.Doc {
 	return doc
 }
 
+func (SELinuxPolicyConfigV1Alpha1) Doc() *encoder.Doc {
+	doc := &encoder.Doc{
+		Type:        "SELinuxPolicyConfig",
+		Comments:    [3]string{"" /* encoder.HeadComment */, "SELinuxPolicyConfig is a SELinux policy module document." /* encoder.LineComment */, "" /* encoder.FootComment */},
+		Description: "SELinuxPolicyConfig is a SELinux policy module document.",
+		Fields: []encoder.Doc{
+			{
+				Type:   "Meta",
+				Inline: true,
+			},
+			{
+				Name:        "name",
+				Type:        "string",
+				Note:        "",
+				Description: "Name of the policy module.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the policy module." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
+				Name:        "content",
+				Type:        "string",
+				Note:        "",
+				Description: "Policy module in CIL, compiled with the Talos policy and loaded without a reboot.\nA module declares a type and calls one of the macros of the base policy:\n`pod_domain` gives the rights of a regular pod, `pod_privileged_domain` those of `pod_privileged_t`\nand `pod_hostmon_domain` those of a process monitor, which reads `/proc` and the files of every pod\nacross MCS categories but never writes them.\nThe attributes `any_p` (every process type), `any_f` (every file type),\n`privileged_readable_f` (files a privileged pod may read), `mcs_exempt_p` and `mcs_read_exempt_p`\n(domains ignoring MCS categories, in both directions or for reading only) are available to extra rules.\nWhatever a module grants, a workload domain never reads the STATE partition, connects to machined\nor ptraces a host service: `secilc` rejects such a module and the running policy is unchanged.\nAnything else is open to a module, which is as trusted as the machine config carrying it.\nA workload selects the type with `securityContext.seLinuxOptions.type` in its pod spec.\nLoad the module before rolling the workload out, a type unknown to the policy fails the container at runc;\ndelete the workload before removing its module, a type removed from the policy leaves its running\ncontainers without any access.\nPrivileged containers cannot select a type: containerd clears their label and they land in `pod_privileged_t`.\n`spc_t` is already an alias of `pod_privileged_t`, any other type must be declared by a module.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Policy module in CIL, compiled with the Talos policy and loaded without a reboot." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+		},
+	}
+
+	doc.AddExample("", exampleSELinuxPolicyConfigV1Alpha1())
+
+	return doc
+}
+
 // GetFileDoc returns documentation for the file runtime_doc.go.
 func GetFileDoc() *encoder.FileDoc {
 	return &encoder.FileDoc{
@@ -525,6 +557,7 @@ func GetFileDoc() *encoder.FileDoc {
 			WatchdogTimerV1Alpha1{}.Doc(),
 			KernelModuleConfigV1Alpha1{}.Doc(),
 			SecurityProfileConfigV1Alpha1{}.Doc(),
+			SELinuxPolicyConfigV1Alpha1{}.Doc(),
 		},
 	}
 }

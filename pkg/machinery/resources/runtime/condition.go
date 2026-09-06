@@ -6,6 +6,7 @@ package runtime
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/cosi-project/runtime/pkg/state"
@@ -181,6 +182,41 @@ func (condition *APIServiceConfigCondition) Wait(ctx context.Context) error {
 			}
 
 			return true, nil
+		}),
+	)
+
+	return err
+}
+
+// SELinuxPolicyCondition implements condition which waits for the SELinux policy modules of the machine config to be compiled, loaded or rejected.
+type SELinuxPolicyCondition struct {
+	state   state.State
+	modules []string
+}
+
+// NewSELinuxPolicyCondition builds a condition which waits for the SELinux policy modules to be reconciled.
+func NewSELinuxPolicyCondition(state state.State, modules []string) *SELinuxPolicyCondition {
+	return &SELinuxPolicyCondition{
+		state:   state,
+		modules: modules,
+	}
+}
+
+func (condition *SELinuxPolicyCondition) String() string {
+	return "selinux policy"
+}
+
+// Wait implements condition interface.
+func (condition *SELinuxPolicyCondition) Wait(ctx context.Context) error {
+	_, err := condition.state.WatchFor(
+		ctx,
+		resource.NewMetadata(NamespaceName, SELinuxPolicyStatusType, SELinuxPolicyStatusID, resource.VersionUndefined),
+		state.WithCondition(func(r resource.Resource) (bool, error) {
+			if resource.IsTombstone(r) {
+				return false, nil
+			}
+
+			return slices.Equal(r.(*SELinuxPolicyStatus).TypedSpec().Modules, condition.modules), nil
 		}),
 	)
 

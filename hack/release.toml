@@ -26,6 +26,19 @@ CoreDNS: 1.14.7
 Talos is built with Go 1.26.7.
 """
 
+    [notes.selinux_workloads]
+        title = "SELinux Workload Domains"
+        description = """\
+When the CRI labels containers (`enable_selinux = true` in a `CRICustomizationConfig` document), pods run as `pod_t` with MCS categories,
+privileged containers as `pod_privileged_t` (`spc_t` is an alias of it, so charts written for Fedora keep working), and the kubelet
+gets `/sys/fs/selinux` and the containers contexts file, so that it labels volumes and its plugin directories.
+
+The new `SELinuxPolicyConfig` document carries a policy module in CIL, which machined compiles with the Talos policy and loads
+without a reboot. A module declares one type per workload with the `pod_domain`, `pod_privileged_domain` or `pod_hostmon_domain`
+macro, and the workload selects it with `securityContext.seLinuxOptions.type`. The compiled policy is no longer embedded in
+machined: the image build ships it with its sources and `secilc` in `/usr/share/selinux/talos`.
+"""
+
     [notes.kubespan_peer_endpoint_filters]
         title = "KubeSpan Peer Endpoint Filters"
         description = """\
