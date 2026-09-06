@@ -104,6 +104,7 @@ func NewState() (*State, error) {
 	for _, r := range []meta.ResourceWithRD{
 		&block.Device{},
 		&block.DiscoveredVolume{},
+		&block.DiscoveredVolumesStatus{},
 		&block.DiscoveryRefreshRequest{},
 		&block.DiscoveryRefreshStatus{},
 		&block.Disk{},
