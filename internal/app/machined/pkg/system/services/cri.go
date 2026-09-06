@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 
 	containerd "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/defaults"
@@ -24,7 +25,9 @@ import (
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/runner/process"
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/runner/restart"
 	"github.com/siderolabs/talos/internal/pkg/environment"
+	"github.com/siderolabs/talos/internal/pkg/selinux"
 	"github.com/siderolabs/talos/pkg/conditions"
+	"github.com/siderolabs/talos/pkg/machinery/config/config"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	"github.com/siderolabs/talos/pkg/machinery/resources/files"
@@ -117,6 +120,14 @@ func (c *CRI) Condition(r runtime.Runtime) conditions.Condition {
 			cond,
 			runtimeres.NewUnattendedInstallCondition(r.State().V1Alpha2().Resources()),
 		)
+	}
+
+	// pods select the types of the policy modules, so the modules are loaded (or rejected) before the CRI serves them
+	if cfg != nil && selinux.IsEnabled() {
+		modules := xslices.Map(cfg.SELinuxPolicyConfigs(), func(module config.SELinuxPolicyConfig) string { return module.Name() })
+		slices.Sort(modules)
+
+		cond = append(cond, runtimeres.NewSELinuxPolicyCondition(r.State().V1Alpha2().Resources(), modules))
 	}
 
 	return conditions.WaitForAll(cond...)

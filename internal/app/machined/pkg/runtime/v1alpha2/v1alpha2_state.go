@@ -263,6 +263,7 @@ func NewState() (*State, error) {
 		&runtime.PlatformMetadata{},
 		&runtime.SBOMItem{},
 		&runtime.SecurityState{},
+		&runtime.SELinuxPolicyStatus{},
 		&runtime.ServicePID{},
 		&runtime.UniqueMachineToken{},
 		&runtime.UnattendedInstallStatus{},

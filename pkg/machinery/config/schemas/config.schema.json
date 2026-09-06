@@ -6969,6 +6969,51 @@
       "type": "object",
       "description": "ProvisioningSpec describes how the Physical Volumes are provisioned."
     },
+    "runtime.SELinuxPolicyConfigV1Alpha1": {
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "v1alpha1"
+          ],
+          "title": "apiVersion",
+          "description": "apiVersion is the API version of the resource.\n",
+          "markdownDescription": "apiVersion is the API version of the resource.",
+          "x-intellij-html-description": "\u003cp\u003eapiVersion is the API version of the resource.\u003c/p\u003e\n"
+        },
+        "kind": {
+          "enum": [
+            "SELinuxPolicyConfig"
+          ],
+          "title": "kind",
+          "description": "kind is the kind of the resource.\n",
+          "markdownDescription": "kind is the kind of the resource.",
+          "x-intellij-html-description": "\u003cp\u003ekind is the kind of the resource.\u003c/p\u003e\n"
+        },
+        "name": {
+          "type": "string",
+          "title": "name",
+          "description": "Name of the policy module.\n",
+          "markdownDescription": "Name of the policy module.",
+          "x-intellij-html-description": "\u003cp\u003eName of the policy module.\u003c/p\u003e\n"
+        },
+        "content": {
+          "type": "string",
+          "title": "content",
+          "description": "Policy module in CIL, compiled with the Talos policy and loaded without a reboot.\nA module declares a type and calls one of the macros of the base policy:\npod_domain gives the rights of a regular pod, pod_privileged_domain those of pod_privileged_t\nand pod_hostmon_domain those of a process monitor, which reads /proc and the files of every pod\nacross MCS categories but never writes them.\nThe attributes any_p (every process type), any_f (every file type),\nprivileged_readable_f (files a privileged pod may read), mcs_exempt_p and mcs_read_exempt_p\n(domains ignoring MCS categories, in both directions or for reading only) are available to extra rules.\nWhatever a module grants, a workload domain never reads the STATE partition, connects to machined\nor ptraces a host service: secilc rejects such a module and the running policy is unchanged.\nAnything else is open to a module, which is as trusted as the machine config carrying it.\nA workload selects the type with securityContext.seLinuxOptions.type in its pod spec.\nLoad the module before rolling the workload out, a type unknown to the policy fails the container at runc;\ndelete the workload before removing its module, a type removed from the policy leaves its running\ncontainers without any access.\nPrivileged containers cannot select a type: containerd clears their label and they land in pod_privileged_t.\nspc_t is already an alias of pod_privileged_t, any other type must be declared by a module.\n",
+          "markdownDescription": "Policy module in CIL, compiled with the Talos policy and loaded without a reboot.\nA module declares a type and calls one of the macros of the base policy:\n`pod_domain` gives the rights of a regular pod, `pod_privileged_domain` those of `pod_privileged_t`\nand `pod_hostmon_domain` those of a process monitor, which reads `/proc` and the files of every pod\nacross MCS categories but never writes them.\nThe attributes `any_p` (every process type), `any_f` (every file type),\n`privileged_readable_f` (files a privileged pod may read), `mcs_exempt_p` and `mcs_read_exempt_p`\n(domains ignoring MCS categories, in both directions or for reading only) are available to extra rules.\nWhatever a module grants, a workload domain never reads the STATE partition, connects to machined\nor ptraces a host service: `secilc` rejects such a module and the running policy is unchanged.\nAnything else is open to a module, which is as trusted as the machine config carrying it.\nA workload selects the type with `securityContext.seLinuxOptions.type` in its pod spec.\nLoad the module before rolling the workload out, a type unknown to the policy fails the container at runc;\ndelete the workload before removing its module, a type removed from the policy leaves its running\ncontainers without any access.\nPrivileged containers cannot select a type: containerd clears their label and they land in `pod_privileged_t`.\n`spc_t` is already an alias of `pod_privileged_t`, any other type must be declared by a module.",
+          "x-intellij-html-description": "\u003cp\u003ePolicy module in CIL, compiled with the Talos policy and loaded without a reboot.\nA module declares a type and calls one of the macros of the base policy:\n\u003ccode\u003epod_domain\u003c/code\u003e gives the rights of a regular pod, \u003ccode\u003epod_privileged_domain\u003c/code\u003e those of \u003ccode\u003epod_privileged_t\u003c/code\u003e\nand \u003ccode\u003epod_hostmon_domain\u003c/code\u003e those of a process monitor, which reads \u003ccode\u003e/proc\u003c/code\u003e and the files of every pod\nacross MCS categories but never writes them.\nThe attributes \u003ccode\u003eany_p\u003c/code\u003e (every process type), \u003ccode\u003eany_f\u003c/code\u003e (every file type),\n\u003ccode\u003eprivileged_readable_f\u003c/code\u003e (files a privileged pod may read), \u003ccode\u003emcs_exempt_p\u003c/code\u003e and \u003ccode\u003emcs_read_exempt_p\u003c/code\u003e\n(domains ignoring MCS categories, in both directions or for reading only) are available to extra rules.\nWhatever a module grants, a workload domain never reads the STATE partition, connects to machined\nor ptraces a host service: \u003ccode\u003esecilc\u003c/code\u003e rejects such a module and the running policy is unchanged.\nAnything else is open to a module, which is as trusted as the machine config carrying it.\nA workload selects the type with \u003ccode\u003esecurityContext.seLinuxOptions.type\u003c/code\u003e in its pod spec.\nLoad the module before rolling the workload out, a type unknown to the policy fails the container at runc;\ndelete the workload before removing its module, a type removed from the policy leaves its running\ncontainers without any access.\nPrivileged containers cannot select a type: containerd clears their label and they land in \u003ccode\u003epod_privileged_t\u003c/code\u003e.\n\u003ccode\u003espc_t\u003c/code\u003e is already an alias of \u003ccode\u003epod_privileged_t\u003c/code\u003e, any other type must be declared by a module.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "content",
+        "kind",
+        "name"
+      ],
+      "description": "SELinuxPolicyConfig is a SELinux policy module document."
+    },
     "runtime.SecurityProfileConfigV1Alpha1": {
       "properties": {
         "apiVersion": {
@@ -8170,6 +8215,9 @@
     },
     {
       "$ref": "#/$defs/runtime.SecurityProfileConfigV1Alpha1"
+    },
+    {
+      "$ref": "#/$defs/runtime.SELinuxPolicyConfigV1Alpha1"
     },
     {
       "$ref": "#/$defs/runtime.SysctlConfigV1Alpha1"
