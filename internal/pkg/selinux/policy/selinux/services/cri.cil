@@ -262,3 +262,5 @@
 ; CRI containerd should talk machined API to call machine.ImageService/Verify API
 (allow pod_containerd_t machine_socket_t (fs_classes (rw)))
 (allow pod_containerd_t init_t (unix_stream_socket (connectto)))
+
+(typeattributeset mcs_exempt_p pod_containerd_t)
