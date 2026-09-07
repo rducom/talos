@@ -131,6 +131,12 @@ func (suite *SELinuxSuite) TestFileMountLabels() {
 		"/usr/share/containers/selinux/contexts": "system_u:object_r:usr_t:s0",
 	}
 
+	if suite.extensionsInstalled(client.WithNode(suite.ctx, suite.RandomDiscoveredNodeInternalIP())) {
+		// the imager labels the extension layers with the file_contexts of the rootfs; the service rootfs directories
+		// under /usr/local/lib/containers carry the label of the overlay machined mounts on them instead
+		expectedLabelsWorker[constants.ExtensionServiceConfigPath] = "system_u:object_r:usr_t:s0"
+	}
+
 	// Only running on controlplane
 	expectedLabelsControlPlane := map[string]string{
 		constants.EtcdPKIPath:                           constants.EtcdPKISELinuxLabel,
@@ -201,13 +207,6 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 			suite.T().Skip("skipping SELinux test since SELinux is disabled")
 		}
 
-		extensions, err := safe.StateListAll[*runtimeres.ExtensionStatus](nodeCtx, suite.Client.COSI)
-		suite.Require().NoError(err)
-
-		if extensions.Len() > 0 {
-			suite.T().Skip("skipping SELinux test since extensions are running")
-		}
-
 		for path, label := range expectedLabels {
 			req := &machineapi.ListRequest{
 				Root:         path,
@@ -234,21 +233,6 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 					}, kubeletPluginDirs...),
 					path,
 				) && info.Name != path {
-					return nil
-				}
-
-				// these are symlinks that comes from files from extensions, and we don't set xattrs for extensions yet
-				// TODO(frezbo): update the test to check for correct labels once we set xattrs for extensions
-				switch info.Name {
-				case "/etc/ld.so.conf", "/etc/ld.so.cache":
-					return nil
-				case "/usr/bin/nvidia-smi":
-					return nil
-				case "/usr/bin/nvidia-ctk":
-					return nil
-				case "/usr/bin/nvidia-cdi-hook":
-					return nil
-				case "/usr/bin/nvme":
 					return nil
 				}
 
@@ -419,6 +403,13 @@ func (suite *SELinuxSuite) criLabelsContainers(nodeCtx context.Context) bool {
 	suite.Require().NoError(err)
 
 	return slices.ContainsFunc(spec.TypedSpec().ExtraMounts, func(mount specs.Mount) bool { return mount.Destination == "/sys/fs/selinux" })
+}
+
+func (suite *SELinuxSuite) extensionsInstalled(nodeCtx context.Context) bool {
+	extensions, err := safe.StateListAll[*runtimeres.ExtensionStatus](nodeCtx, suite.Client.COSI)
+	suite.Require().NoError(err)
+
+	return extensions.Len() > 0
 }
 
 func (suite *SELinuxSuite) skipUnlessCRILabels(node string) {

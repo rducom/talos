@@ -44,6 +44,13 @@ above the range the CRI draws from (`s0:c512` to `s0:c1021`), else the pod of th
 static pod runs at `s0:c1020,c1021` for its audit log; keep that pair for it.
 """
 
+    [notes.selinux_extensions]
+        title = "SELinux and System Extensions"
+        description = """\
+The imager now labels the files of system extensions with the `file_contexts` of the Talos rootfs, so that an extension
+binary, kernel module or CRI runtime handler carries the same SELinux label as if it were part of the rootfs.
+"""
+
     [notes.kubespan_peer_endpoint_filters]
         title = "KubeSpan Peer Endpoint Filters"
         description = """\
