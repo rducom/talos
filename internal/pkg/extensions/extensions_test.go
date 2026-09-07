@@ -5,6 +5,7 @@
 package extensions_test
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -28,6 +29,10 @@ func TestCompress(t *testing.T) {
 	require.Len(t, exts, 1)
 
 	ext := exts[0]
+
+	// a name with a space and a quote goes through the pseudo-file definitions
+	require.NoError(t, os.MkdirAll(filepath.Join(ext.RootfsPath(), "usr/local/share/a b"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(ext.RootfsPath(), `usr/local/share/a b/c"d`), []byte("x"), 0o644))
 
 	squashDest, initramfsDest := t.TempDir(), t.TempDir()
 	squashFile, err := ext.Compress(t.Context(), squashDest, initramfsDest, quirks.New(""), nil)
