@@ -13,8 +13,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 
+	"github.com/siderolabs/talos/internal/pkg/selinux"
+	"github.com/siderolabs/talos/internal/pkg/selinux/fcontext"
 	"github.com/siderolabs/talos/pkg/machinery/imager/quirks"
 )
 
@@ -72,8 +73,19 @@ func (ext *Extension) Compress(ctx context.Context, squashPath, initramfsPath st
 		compressArgs = []string{"-comp", "xz", "-Xdict-size", "100%"}
 	}
 
-	pseudoFlags, err := ext.xattrPseudoFlags(xattrsMap)
+	// the labels go through a pseudo-file, the xattrs of the source tree are ignored
+	pseudo, err := os.CreateTemp("", ext.Directory()+"-pseudo-")
 	if err != nil {
+		return "", err
+	}
+
+	defer os.Remove(pseudo.Name()) //nolint:errcheck
+
+	if err = ext.writePseudo(pseudo, xattrsMap); err != nil {
+		return "", err
+	}
+
+	if err = pseudo.Close(); err != nil {
 		return "", err
 	}
 
@@ -87,45 +99,25 @@ func (ext *Extension) Compress(ctx context.Context, squashPath, initramfsPath st
 				"-no-progress",
 			},
 			compressArgs,
-			pseudoFlags,
+			[]string{"-xattrs-exclude", ".*", "-pf", pseudo.Name()},
 		)...)
 	cmd.Stderr = os.Stderr
 
 	return squashPath, cmd.Run()
 }
 
-// xattrPseudoFlags returns a list of pseudo-flag strings for the xattrs of the extension.
+// writePseudo writes the mksquashfs pseudo-file carrying the SELinux label of every entry of the extension rootfs.
 //
-// These pseudo-flags are used to indicate the presence of specific SELinux xattrs on files within the extension.
-// The mksquashfs tool will use that to mark files with xattrs instead of reading it from the filesystem.
-func (ext *Extension) xattrPseudoFlags(xattrsMap map[string]string) ([]string, error) {
-	if xattrsMap == nil {
-		return nil, nil
+// A label the extension ships itself (a PAX record of its layers, collected in xattrsMap) wins; every other entry gets
+// the label file_contexts gives the same path in the Talos rootfs, so that an extension file is labeled as if it were
+// part of the rootfs.
+func (ext *Extension) writePseudo(w io.Writer, xattrsMap map[string]string) error {
+	rules, err := selinux.FileContextRules()
+	if err != nil {
+		return err
 	}
 
-	flags := []string{"-xattrs-exclude", ".*"} // exclude all xattrs by default
-
-	for path, xattrValue := range xattrsMap {
-		if strings.HasPrefix(path, ext.RootfsPath()) {
-			// check if the file exists still (it might have been moved to the initramfs)
-			if _, err := os.Lstat(path); os.IsNotExist(err) {
-				continue
-			}
-
-			relativePath, err := filepath.Rel(ext.RootfsPath(), path)
-			if err != nil {
-				return nil, err
-			}
-
-			if relativePath == "." {
-				relativePath = "/"
-			}
-
-			flags = append(flags, "-p", fmt.Sprintf("%s x security.selinux=%s", relativePath, xattrValue))
-		}
-	}
-
-	return flags, nil
+	return fcontext.WritePseudo(w, ext.RootfsPath(), rules, xattrsMap)
 }
 
 func appendBlob(dst io.Writer, srcPath string) error {
