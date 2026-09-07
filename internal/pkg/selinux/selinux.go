@@ -19,6 +19,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/siderolabs/talos/internal/pkg/containermode"
+	"github.com/siderolabs/talos/internal/pkg/selinux/fcontext"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/xfs"
 )
@@ -31,6 +32,16 @@ const CommitPendingBoolsPath = "/sys/fs/selinux/commit_pending_bools"
 
 //go:embed policy/policy.33
 var policy []byte
+
+// FileContexts is the file_contexts of the policy the image build compiled from the same sources.
+//
+//go:embed policy/file_contexts
+var FileContexts []byte
+
+// FileContextRules parses FileContexts once.
+var FileContextRules = sync.OnceValues(func() ([]fcontext.Rule, error) {
+	return fcontext.Parse(bytes.NewReader(FileContexts))
+})
 
 // IsEnabled checks if SELinux is enabled on the system by reading
 // the kernel command line. It returns true if SELinux is enabled,

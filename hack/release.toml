@@ -388,6 +388,13 @@ Without `selinuxCategories`, the static pods run as `pod_t` as before, and `pod_
 `pod_use_control_plane_files` boolean, which Talos turns off when `selinuxCategories` is set.
 """
 
+    [notes.selinux_extensions]
+        title = "SELinux and System Extensions"
+        description = """\
+The imager now labels the files of system extensions with the `file_contexts` of the Talos rootfs, so that an extension
+binary, kernel module or CRI runtime handler carries the same SELinux label as if it were part of the rootfs.
+"""
+
     [notes.kubespan_peer_endpoint_filters]
         title = "KubeSpan Peer Endpoint Filters"
         description = """\
