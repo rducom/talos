@@ -213,12 +213,28 @@ message SBOMItemSpec {
   bool extension = 6;
 }
 
+// SELinuxModuleSpec describes the SELinuxModule resource.
+message SELinuxModuleSpec {
+  // Content is the module in CIL.
+  string content = 1;
+  // Labels are the types machined gives the state directories of an extension service, by mount source, once the module is loaded.
+  map<string, string> labels = 2;
+  // Warnings lists what could not be derived from the service spec.
+  repeated string warnings = 3;
+  // Type is the domain the module declares for an extension service, empty for a document of the machine config.
+  string type = 4;
+  // Error tells why nothing was derived from the service spec, in which case the module is empty.
+  string error = 5;
+}
+
 // SELinuxPolicyStatusSpec describes the SELinuxPolicyStatus resource.
 message SELinuxPolicyStatusSpec {
-  // Modules are the SELinuxPolicyConfig documents of the machine config at the last reconcile.
+  // Modules are the SELinuxModule resources at the last reconcile.
   repeated string modules = 1;
   // Error is the compile or load error of the last reconcile, empty when the modules are loaded.
   string error = 2;
+  // Loaded are the modules compiled into the policy the kernel runs: the last set accepted, Modules unless Error is set.
+  repeated string loaded = 3;
 }
 
 // SecurityStateSpec describes the security state resource properties.

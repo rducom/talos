@@ -13,6 +13,7 @@ import (
 	"github.com/siderolabs/gen/xslices"
 
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/runner"
+	"github.com/siderolabs/talos/pkg/machinery/config/config"
 	runtimeres "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 )
 
@@ -57,3 +58,16 @@ func (svc *Extension) ApplyExtensionServiceConfig(
 
 // Relabelable exposes relabelable for tests.
 var Relabelable = relabelable
+
+// DerivedType exposes derivedType for tests.
+func (svc *Extension) DerivedType(ctx context.Context, st state.State) (string, map[string]string, string) {
+	return svc.derivedType(ctx, st)
+}
+
+// ConfinedType exposes confinedType for tests.
+var ConfinedType = confinedType
+
+// SELinuxModules exposes selinuxModules for tests.
+func (svc *Extension) SELinuxModules(cfg config.Config) []string {
+	return svc.selinuxModules(cfg)
+}

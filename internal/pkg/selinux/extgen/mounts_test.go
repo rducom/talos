@@ -34,6 +34,8 @@ func TestStateKind(t *testing.T) {
 		"/var/log/audit/kube":               extgen.KindOther,
 		"/run/lock/iscsi":                   extgen.KindOther,
 		"/run/udev":                         extgen.KindOther,
+		"/var/run/udev":                     extgen.KindOther,
+		"/var/run":                          extgen.KindOther,
 		"/dev/net/tun":                      extgen.KindOther,
 		"/system/run/machined/machine.sock": extgen.KindOther,
 	} {

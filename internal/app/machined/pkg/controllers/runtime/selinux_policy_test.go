@@ -15,10 +15,6 @@ import (
 
 	"github.com/siderolabs/talos/internal/app/machined/pkg/controllers/ctest"
 	runtimecontrollers "github.com/siderolabs/talos/internal/app/machined/pkg/controllers/runtime"
-	machineconfig "github.com/siderolabs/talos/pkg/machinery/config/config"
-	"github.com/siderolabs/talos/pkg/machinery/config/container"
-	runtimeconfig "github.com/siderolabs/talos/pkg/machinery/config/types/runtime"
-	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	runtimeres "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 )
 
@@ -33,14 +29,14 @@ func TestSELinuxPolicySuite(t *testing.T) {
 				suite.Require().NoError(suite.Runtime().RegisterController(&runtimecontrollers.SELinuxPolicyController{
 					// a module saying so is rejected, and so is a module needing another one absent from the set
 					Compile: func(_ context.Context, modules map[string]string) ([]byte, error) {
-						for name, content := range modules {
+						for id, content := range modules {
 							if strings.Contains(content, "bad") {
-								return nil, errors.New("secilc: " + name + " rejected")
+								return nil, errors.New("secilc: " + id + " rejected")
 							}
 
 							if _, needs, ok := strings.Cut(content, "needs "); ok {
 								if _, present := modules[strings.TrimSpace(needs)]; !present {
-									return nil, errors.New("secilc: " + name + " needs " + needs)
+									return nil, errors.New("secilc: " + id + " needs " + needs)
 								}
 							}
 						}
@@ -54,50 +50,43 @@ func TestSELinuxPolicySuite(t *testing.T) {
 	})
 }
 
-func (suite *SELinuxPolicySuite) applyModules(modules map[string]string) {
-	var documents []machineconfig.Document
+func (suite *SELinuxPolicySuite) module(id, content string) *runtimeres.SELinuxModule {
+	module := runtimeres.NewSELinuxModule(id)
+	module.TypedSpec().Content = content
+	suite.Create(module)
 
-	for name, content := range modules {
-		document := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1(name)
-		document.PolicyContent = content
-		documents = append(documents, document)
-	}
-
-	cntr, err := container.New(documents...)
-	suite.Require().NoError(err)
-
-	cfg := config.NewMachineConfig(cntr)
-
-	if existing, err := suite.State().Get(suite.Ctx(), cfg.Metadata()); err == nil {
-		cfg.Metadata().SetVersion(existing.Metadata().Version())
-		suite.Update(cfg)
-	} else {
-		suite.Create(cfg)
-	}
+	return module
 }
 
 // TestRejectedModules: a module the compile rejects is left out and the others load, whatever the order the compile
-// needs them in; the status lists the modules loaded and says which were rejected and why, until they change.
+// needs them in; the status lists the modules present, the ones loaded, and the rejected ones with their errors, until
+// they change.
 func (suite *SELinuxPolicySuite) TestRejectedModules() {
-	suite.applyModules(map[string]string{"good": "(type pod_good_t)\n"})
+	suite.module("config-good", "(type pod_good_t)\n")
 
 	ctest.AssertResource(suite, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
-		asrt.Equal([]string{"good"}, status.TypedSpec().Modules)
+		asrt.Equal([]string{"config-good"}, status.TypedSpec().Modules)
+		asrt.Equal([]string{"config-good"}, status.TypedSpec().Loaded)
 		asrt.Empty(status.TypedSpec().Error)
 	})
 
-	// a-extra needs z-base, which the name order compiles after it
-	suite.applyModules(map[string]string{"good": "(type pod_good_t)\n", "bad": "(type bad_t)\n", "a-extra": "needs z-base\n", "z-base": "(type pod_z_t)\n"})
+	bad := suite.module("config-bad", "(type bad_t)\n")
+
+	// config-a-extra needs config-z-base, which the name order compiles after it
+	suite.module("config-a-extra", "needs config-z-base\n")
+	suite.module("config-z-base", "(type pod_z_t)\n")
 
 	ctest.AssertResource(suite, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
-		asrt.Equal([]string{"a-extra", "good", "z-base"}, status.TypedSpec().Modules)
-		asrt.Equal("module bad rejected: secilc: bad rejected", status.TypedSpec().Error)
+		asrt.Equal([]string{"config-a-extra", "config-bad", "config-good", "config-z-base"}, status.TypedSpec().Modules)
+		asrt.Equal([]string{"config-a-extra", "config-good", "config-z-base"}, status.TypedSpec().Loaded)
+		asrt.Equal("module config-bad rejected: secilc: config-bad rejected", status.TypedSpec().Error)
 	})
 
-	suite.applyModules(map[string]string{"good": "(type pod_good_t)\n", "a-extra": "needs z-base\n", "z-base": "(type pod_z_t)\n"})
+	suite.Destroy(bad)
 
 	ctest.AssertResource(suite, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
-		asrt.Equal([]string{"a-extra", "good", "z-base"}, status.TypedSpec().Modules)
+		asrt.Equal([]string{"config-a-extra", "config-good", "config-z-base"}, status.TypedSpec().Modules)
+		asrt.Equal(status.TypedSpec().Modules, status.TypedSpec().Loaded)
 		asrt.Empty(status.TypedSpec().Error)
 	})
 }

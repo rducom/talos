@@ -1,0 +1,16 @@
+# A writable rootfs, and mount points Talos labels with a type of their own under /run.
+name: writeable-rootfs
+container:
+  entrypoint: /usr/local/bin/daemon
+  security:
+    writeableRootfs: true
+  mounts:
+    - source: /run/udev
+      destination: /run/udev
+      type: bind
+      options: [bind, ro]
+    - source: /run/lock/daemon
+      destination: /run/lock/daemon
+      type: bind
+      options: [bind, rw]
+restart: always

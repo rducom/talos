@@ -47,14 +47,21 @@ static pod runs at `s0:c1020,c1021` for its audit log; keep that pair for it.
     [notes.selinux_extensions]
         title = "SELinux and System Extensions"
         description = """\
-The imager now labels the files of system extensions with the `file_contexts` of the Talos rootfs, so that an extension
-binary, kernel module or CRI runtime handler carries the same SELinux label as if it were part of the rootfs.
+The imager labels the files of system extensions with the `file_contexts` of the Talos rootfs, so that an extension
+binary or kernel module carries the label it would have as part of the rootfs.
 
-Extension services in container mode run as `ext_t`, a domain of their own, in place of `unconfined_container_t`, and the
-state directories they mount from `/var` and `/run` are labeled `ext_state_t` and `ext_run_t`, which no pod reads.
-The new `selinux.type` field of `ExtensionServiceConfig` selects another type, `ext_privileged_t` for a service which needs
-the devices, the mounts and the machined socket of the host, or a type declared by a `SELinuxPolicyConfig` document
-with the `ext_domain` macro; `talosctl services ext-<name>` reports the type the service runs with.
+Extension services in container mode run in a domain of their own, from a rootfs mounted with the `ext_rootfs_t`
+context, one type for the files of the image and the mount points the system containerd creates in it. machined
+derives a policy module from the service spec, a domain `ext_<name>_t` granted what the mounts and the security options of the spec ask for, with types of its
+own for the state directories the service mounts, which no pod reads. A mount of a directory Talos labels below, such as
+`/var`, grants the type of that directory only, and the module says which directories are not granted; a mount of `/dev`
+reads every block device, STATE included. The modules are compiled with the Talos policy and the `SELinuxPolicyConfig`
+documents, at boot and whenever the machine config changes; `talosctl get selinuxmodules` lists them, and `talosctl get
+selinuxpolicystatus` reports the set loaded and a rejected one. The imager derives and compiles the same modules, and
+refuses an image whose extension service could not be confined. A service whose module is not loaded runs as `ext_t`;
+`selinux.type` in `ExtensionServiceConfig` selects another type, `ext_privileged_t` or one declared by a
+`SELinuxPolicyConfig` document with the `ext_domain` macro. The state directories keep the types derived from the spec
+whatever the type: `ext_t` and `ext_privileged_t` reach the state of every service, a derived or a declared type its own.
 """
 
     [notes.kubespan_peer_endpoint_filters]

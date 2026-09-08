@@ -273,7 +273,7 @@ func Compile(ctx context.Context, modules map[string]string) ([]byte, error) {
 		return os.ReadFile(filepath.Join(policyDir, "policy.33"))
 	}
 
-	dir, err := os.MkdirTemp(constants.SystemRunPath, "selinux-")
+	dir, err := os.MkdirTemp("", "selinux-")
 	if err != nil {
 		return nil, err
 	}

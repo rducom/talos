@@ -31,10 +31,12 @@ import (
 
 	"github.com/siderolabs/talos/cmd/talosctl/pkg/talos/helpers"
 	"github.com/siderolabs/talos/internal/integration/base"
+	"github.com/siderolabs/talos/internal/pkg/selinux/extgen"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	machineapi "github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/config/machine"
+	runtimeconfig "github.com/siderolabs/talos/pkg/machinery/config/types/runtime"
 	"github.com/siderolabs/talos/pkg/machinery/config/types/runtime/extensions"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
@@ -244,7 +246,11 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 				for _, l := range info.Xattrs {
 					if l.Name == "security.selinux" {
 						got := string(bytes.Trim(l.Data, "\x00\n"))
-						suite.Require().Contains(got, label, "expected %s to have label %s, got %s (checking %s)", info.Name, label, got, path)
+
+						// the state directories of extension services carry the types of their modules
+						if !strings.Contains(got, ":ext_") {
+							suite.Require().Contains(got, label, "expected %s to have label %s, got %s (checking %s)", info.Name, label, got, path)
+						}
 
 						found = true
 
@@ -866,8 +872,36 @@ func (suite *SELinuxSuite) waitForExtensionServiceEvent(nodeCtx context.Context,
 	}))
 }
 
-// TestExtensionServiceDomains checks the domain of the extension services in container mode, ext_t unless the machine config
-// selects another type, and that an unknown type fails the service with a readable error.
+// fileLabel returns the SELinux label of a path on the node.
+func (suite *SELinuxSuite) fileLabel(nodeCtx context.Context, path string) string {
+	stream, err := suite.Client.LS(nodeCtx, &machineapi.ListRequest{Root: path, ReportXattrs: true})
+	suite.Require().NoError(err)
+
+	var label string
+
+	suite.Require().NoError(helpers.ReadGRPCStream(stream, func(info *machineapi.FileInfo, _ string, _ bool) error {
+		if info.Name != path {
+			return nil
+		}
+
+		for _, xattr := range info.Xattrs {
+			if xattr.Name == "security.selinux" {
+				label = string(bytes.Trim(xattr.Data, "\x00\n"))
+			}
+		}
+
+		return nil
+	}))
+
+	return label
+}
+
+// TestExtensionServiceDomains checks the domain of the extension services in container mode: the type their module derives
+// from the spec, with their state directories labeled for them, unless the machine config selects another type; an unknown
+// type fails the service with a readable error; a module contradicting a neverallow of the config is rejected without
+// touching the loaded policy.
+//
+//nolint:gocyclo
 func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 	node := suite.RandomDiscoveredNodeInternalIP()
 	nodeCtx := client.WithNode(suite.ctx, node)
@@ -887,16 +921,32 @@ func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 		}
 
 		// services in host mode keep their domain
-		if label := suite.extensionServiceLabel(nodeCtx, svc.Metadata().ID()); label != constants.SelinuxLabelUnconfinedService {
-			suite.Assert().Equal("system_u:system_r:"+constants.SELinuxTypeExtension+":s0", label, svc.Metadata().ID())
+		label := suite.extensionServiceLabel(nodeCtx, svc.Metadata().ID())
+		if label == constants.SelinuxLabelUnconfinedService {
+			continue
+		}
 
-			name = strings.TrimPrefix(svc.Metadata().ID(), "ext-")
+		name = strings.TrimPrefix(svc.Metadata().ID(), "ext-")
+
+		suite.Assert().Equal("system_u:system_r:"+extgen.TypeName(name)+":s0", label, svc.Metadata().ID())
+
+		module, err := safe.StateGetByID[*runtimeres.SELinuxModule](nodeCtx, suite.Client.COSI, svc.Metadata().ID())
+		suite.Require().NoError(err)
+		suite.Assert().Empty(module.TypedSpec().Warnings)
+
+		for source, typ := range module.TypedSpec().Labels {
+			suite.Assert().Equal("system_u:object_r:"+typ+":s0", suite.fileLabel(nodeCtx, source), source)
 		}
 	}
 
 	if name == "" {
 		suite.T().Skip("skipping SELinux test since no extension service runs in container mode")
 	}
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Modules, "ext-"+name)
+		asrt.Empty(status.TypedSpec().Error)
+	})
 
 	cfg := extensions.NewServicesConfigV1Alpha1()
 	cfg.ServiceName = name
@@ -916,7 +966,29 @@ func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 
 	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
 	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
-	suite.Assert().Equal("system_u:system_r:"+constants.SELinuxTypeExtension+":s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+	suite.Assert().Equal("system_u:system_r:"+extgen.TypeName(name)+":s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	// a ceiling every extension domain contradicts: the compile fails, the service keeps running with the loaded policy
+	ceiling := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("ceiling")
+	ceiling.PolicyContent = "(neverallow extension_p usr_t (file (execute)))\n"
+
+	suite.PatchMachineConfig(nodeCtx, ceiling)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "ceiling")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Modules, "config-ceiling")
+		asrt.Contains(status.TypedSpec().Error, "neverallow check failed")
+	})
+
+	suite.Assert().Equal("system_u:system_r:"+extgen.TypeName(name)+":s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "ceiling")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.NotContains(status.TypedSpec().Modules, "config-ceiling")
+		asrt.Empty(status.TypedSpec().Error)
+	})
 }
 
 // TestNoPtrace confirms ptracing system processes is prohibited in enforcing mode.

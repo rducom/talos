@@ -1,0 +1,50 @@
+;; agent
+(type ext_agent_t)
+(call ext_domain (ext_agent_t))
+(type ext_agent_state_t)
+(call ext_state_f (ext_agent_state_t))
+(type ext_agent_run_t)
+(call ext_run_f (ext_agent_run_t))
+(allow ext_agent_t device_t (fs_classes (rw))) ; /dev/net/tun
+(allow ext_agent_t etc_t (fs_classes (ro))) ; /etc/ssl/certs
+(allow ext_agent_t ext_agent_run_t (fs_classes (rw))) ; /run/agent
+(allow ext_agent_t ext_agent_state_t (fs_classes (rw))) ; /var/lib/agent
+(allow ext_agent_t sysfs_t (fs_classes (rw))) ; container.security.writeableSysfs
+;; label /run/agent ext_agent_run_t
+;; label /var/lib/agent ext_agent_state_t
+
+;; host-agent
+(type ext_host_agent_t)
+(call ext_domain (ext_host_agent_t))
+(allow ext_host_agent_t init_exec_t (fs_classes (ro))) ; /sbin/init
+(allow ext_host_agent_t init_exec_t (file (execute execute_no_trans))) ; /sbin/init
+(allow ext_host_agent_t init_t (unix_stream_socket (connectto)))
+(allow ext_host_agent_t machine_socket_t (sock_file (write))) ; /system/run/machined/machine.sock
+(allow ext_host_agent_t system_run_t (fs_classes (ro)))
+
+;; minimal
+(type ext_minimal_t)
+(call ext_domain (ext_minimal_t))
+
+;; storage
+(type ext_storage_t)
+(call ext_domain (ext_storage_t))
+(allow ext_storage_t any_f (fs_classes (mounton))) ; container.security.rootfsPropagation
+(allow ext_storage_t device_t (fs_classes (rw))) ; /dev
+(allow ext_storage_t ephemeral_t (fs_classes (rw))) ; /var
+(allow ext_storage_t filesystem_f (filesystem (mount remount unmount getattr))) ; container.security.rootfsPropagation
+(allow ext_storage_t lib_t (fs_classes (ro))) ; /lib
+(allow ext_storage_t run_t (fs_classes (rw))) ; /run
+(allow ext_storage_t usr_t (fs_classes (ro))) ; /usr/local/sbin
+; /dev covers /dev/pts (devpts_t), /dev/mtd* (mtd_device_t), /dev/rtc* (rtc_device_t), /dev/tpm* (tpm_device_t), /dev/watchdog* (wdt_device_t): not granted
+; /run covers /run/containerd (pod_containerd_run_t), /run/lock (var_lock_t), /run/udev (udev_run_t): not granted
+; /var covers /var/lib/cni (cni_state_t), /var/lib/containerd (containerd_state_t), /var/lib/etcd (etcd_data_t), /var/lib/kubelet (kubelet_state_t), /var/lib/kubelet/seccomp/profiles (seccomp_profile_t), /var/log (var_log_t), /var/log/audit (audit_log_t), /var/log/audit/kube (kube_log_t), /var/log/containers (containers_log_t), /var/log/pods (pods_log_t): not granted
+;; warnings: /dev covers /dev/pts (devpts_t), /dev/mtd* (mtd_device_t), /dev/rtc* (rtc_device_t), /dev/tpm* (tpm_device_t), /dev/watchdog* (wdt_device_t): not granted /run covers /run/containerd (pod_containerd_run_t), /run/lock (var_lock_t), /run/udev (udev_run_t): not granted /var covers /var/lib/cni (cni_state_t), /var/lib/containerd (containerd_state_t), /var/lib/etcd (etcd_data_t), /var/lib/kubelet (kubelet_state_t), /var/lib/kubelet/seccomp/profiles (seccomp_profile_t), /var/log (var_log_t), /var/log/audit (audit_log_t), /var/log/audit/kube (kube_log_t), /var/log/containers (containers_log_t), /var/log/pods (pods_log_t): not granted
+
+;; writeable-rootfs
+(type ext_writeable_rootfs_t)
+(call ext_domain (ext_writeable_rootfs_t))
+(allow ext_writeable_rootfs_t ext_rootfs_t (fs_classes (rw))) ; container.security.writeableRootfs
+(allow ext_writeable_rootfs_t udev_run_t (fs_classes (ro))) ; /run/udev
+(allow ext_writeable_rootfs_t var_lock_t (fs_classes (rw))) ; /run/lock/daemon
+

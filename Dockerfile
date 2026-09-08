@@ -1223,6 +1223,9 @@ ENTRYPOINT ["/bin/installer"]
 # Imager can be thought of as an extended installer.
 # It has the boot artifacts and tools to build any requested talos image with desired modifications and system extensions.
 # Imager is meant to be run outside of talos and the talos installation flow.
+FROM tools-${TARGETARCH} AS tools-targetarch
+FROM pkg-libsepol-${TARGETARCH} AS pkg-libsepol-targetarch
+
 FROM installer-base-image-squashed AS imager-image
 COPY --link --from=pkg-cpio / /
 COPY --link --exclude=**/*.a --exclude=**/*.la  --exclude=usr/lib/pkgconfig --from=pkg-e2fsprogs / /
@@ -1248,6 +1251,10 @@ COPY --link --exclude=**/*.a --exclude=**/*.la  --exclude=usr/include --exclude=
 COPY --link --exclude=**/*.a --exclude=**/*.la  --exclude=usr/include --exclude=usr/lib/pkgconfig --from=pkg-zstd / /
 COPY --chmod=0644 hack/extra-modules.conf /etc/modules.d/10-extra-modules.conf
 COPY --link --from=install-artifacts / /
+# the SELinux policy sources and compiler, so that the imager compiles the modules of the extension services
+COPY --link --exclude=**/*.a --exclude=usr/include --from=pkg-libsepol-targetarch / /
+COPY --link --from=tools-targetarch /usr/bin/secilc /usr/bin/secilc
+COPY --link internal/pkg/selinux/policy/selinux /usr/share/selinux/talos
 
 FROM scratch AS imager-image-squashed
 COPY --link --from=imager-image / /

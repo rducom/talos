@@ -496,6 +496,9 @@ func (ctrl *Controller) Run(ctx context.Context, drainer *runtime.Drainer) error
 			V1Alpha1Services: system.Services(ctrl.v1alpha1Runtime),
 			ConfigPath:       constants.ExtensionServiceConfigPath,
 		},
+		&runtimecontrollers.ExtensionSELinuxModuleController{
+			ConfigPath: constants.ExtensionServiceConfigPath,
+		},
 		&runtimecontrollers.ExtensionStatusController{},
 		&runtimecontrollers.ImageFactorySchematicController{},
 		&runtimecontrollers.KernelCmdlineController{
@@ -510,6 +513,7 @@ func (ctrl *Controller) Run(ctx context.Context, drainer *runtime.Drainer) error
 			V1Alpha1Mode: ctrl.v1alpha1Runtime.State().Platform().Mode(),
 		},
 		&runtimecontrollers.KernelParamSpecController{},
+		&runtimecontrollers.SELinuxModuleConfigController{},
 		&runtimecontrollers.SELinuxPolicyController{},
 		&runtimecontrollers.KmsgLogConfigController{
 			Cmdline: procfs.ProcCmdline(),

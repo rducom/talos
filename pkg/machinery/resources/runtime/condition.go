@@ -7,6 +7,7 @@ package runtime
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/cosi-project/runtime/pkg/state"
@@ -188,7 +189,7 @@ func (condition *APIServiceConfigCondition) Wait(ctx context.Context) error {
 	return err
 }
 
-// SELinuxPolicyCondition implements condition which waits for the SELinux policy modules of the machine config to be compiled, loaded or rejected.
+// SELinuxPolicyCondition implements condition which waits for the SELinux policy modules to be compiled, loaded or rejected.
 type SELinuxPolicyCondition struct {
 	state   state.State
 	modules []string
@@ -203,7 +204,7 @@ func NewSELinuxPolicyCondition(state state.State, modules []string) *SELinuxPoli
 }
 
 func (condition *SELinuxPolicyCondition) String() string {
-	return "selinux policy"
+	return "selinux policy modules " + strings.Join(condition.modules, ", ")
 }
 
 // Wait implements condition interface.
@@ -216,7 +217,9 @@ func (condition *SELinuxPolicyCondition) Wait(ctx context.Context) error {
 				return false, nil
 			}
 
-			return slices.Equal(r.(*SELinuxPolicyStatus).TypedSpec().Modules, condition.modules), nil
+			status := r.(*SELinuxPolicyStatus).TypedSpec()
+
+			return !slices.ContainsFunc(condition.modules, func(module string) bool { return !slices.Contains(status.Modules, module) }), nil
 		}),
 	)
 

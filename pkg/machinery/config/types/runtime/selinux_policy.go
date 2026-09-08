@@ -70,6 +70,7 @@ type SELinuxPolicyConfigV1Alpha1 struct {
 	//     containers without any access.
 	//     Privileged containers cannot select a type: containerd clears their label and they land in `pod_privileged_t`.
 	//     `spc_t` is already an alias of `pod_privileged_t`, any other type must be declared by a module.
+	//     A type named `ext_<x>_t` collides with the module Talos derives for an extension service `x`.
 	//   schemaRequired: true
 	PolicyContent string `yaml:"content"`
 }

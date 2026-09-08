@@ -17,6 +17,9 @@ import (
 	"github.com/containerd/containerd/v2/core/snapshots"
 	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/cosi-project/runtime/pkg/state"
+	"github.com/cosi-project/runtime/pkg/state/impl/inmem"
+	"github.com/cosi-project/runtime/pkg/state/impl/namespaced"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,6 +31,8 @@ import (
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/runner"
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/services"
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/services/mocks"
+	"github.com/siderolabs/talos/pkg/machinery/config/container"
+	runtimeconfig "github.com/siderolabs/talos/pkg/machinery/config/types/runtime"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	extservices "github.com/siderolabs/talos/pkg/machinery/extensions/services"
 	runtimeres "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
@@ -407,4 +412,73 @@ func TestExtensionRelabelable(t *testing.T) {
 	} {
 		assert.Equal(t, want, services.Relabelable(label), label)
 	}
+}
+
+// TestExtensionDerivedType checks the service resolves its type from its module and the policy status.
+func TestExtensionDerivedType(t *testing.T) {
+	st := state.WrapCore(namespaced.NewState(inmem.Build))
+	svc := &services.Extension{Spec: extservices.Spec{Name: "hello-world"}}
+
+	typ, _, _ := svc.DerivedType(t.Context(), st)
+	assert.Equal(t, "ext_t", typ)
+
+	module := runtimeres.NewSELinuxModule("ext-hello-world")
+	module.TypedSpec().Type = "ext_hello_world_t"
+	module.TypedSpec().Labels = map[string]string{"/var/lib/hello": "ext_hello_world_state_t"}
+	require.NoError(t, st.Create(t.Context(), module))
+
+	// requested, not loaded yet
+	status := runtimeres.NewSELinuxPolicyStatus()
+	status.TypedSpec().Modules = []string{"ext-hello-world"}
+	require.NoError(t, st.Create(t.Context(), status))
+
+	typ, _, reason := svc.DerivedType(t.Context(), st)
+	assert.Equal(t, []any{"ext_t", "policy module of the service is not loaded"}, []any{typ, reason})
+
+	status.TypedSpec().Loaded = []string{"ext-hello-world"}
+	require.NoError(t, st.Update(t.Context(), status))
+
+	typ, labels, reason := svc.DerivedType(t.Context(), st)
+	assert.Equal(t, []any{"ext_hello_world_t", map[string]string{"/var/lib/hello": "ext_hello_world_state_t"}, ""}, []any{typ, labels, reason})
+
+	// a set rejected for another module leaves the loaded policy, and the type, as they are
+	status.TypedSpec().Modules = []string{"config-bad", "ext-hello-world"}
+	status.TypedSpec().Error = "secilc: neverallow check failed"
+	require.NoError(t, st.Update(t.Context(), status))
+
+	typ, labels, _ = svc.DerivedType(t.Context(), st)
+	assert.Equal(t, []any{"ext_hello_world_t", map[string]string{"/var/lib/hello": "ext_hello_world_state_t"}}, []any{typ, labels})
+}
+
+// TestExtensionConfinedType: the type of the machine config wins, the labels of the state directories are those of the
+// derived module whatever the type (checked by the caller).
+func TestExtensionConfinedType(t *testing.T) {
+	for _, test := range []struct {
+		configured, derived, reason string
+		typ, want                   string
+	}{
+		{"ext_privileged_t", "ext_hello_world_t", "", "ext_privileged_t", ""},
+		{"ext_privileged_t", "ext_t", "policy module of the service is not loaded", "ext_privileged_t", ""},
+		{"", "ext_hello_world_t", "", "ext_hello_world_t", ""},
+		{"", "ext_t", "policy module of the service is not loaded", "ext_t", "policy module of the service is not loaded"},
+	} {
+		typ, reason := services.ConfinedType(test.configured, test.derived, test.reason)
+		assert.Equal(t, []any{test.typ, test.want}, []any{typ, reason})
+	}
+}
+
+// TestExtensionSELinuxModules: a service waits for its own module and for the documents of the machine config, which
+// may declare its type.
+func TestExtensionSELinuxModules(t *testing.T) {
+	svc := &services.Extension{Spec: extservices.Spec{Name: "hello-world"}}
+
+	assert.Equal(t, []string{"ext-hello-world"}, svc.SELinuxModules(nil))
+
+	policy := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("custom")
+	policy.PolicyContent = "(type ext_custom_t)\n(call ext_domain (ext_custom_t))\n"
+
+	cfg, err := container.New(policy)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"ext-hello-world", "config-custom"}, svc.SELinuxModules(cfg))
 }

@@ -36,7 +36,9 @@ import (
 	"github.com/siderolabs/talos/internal/pkg/mount/v3"
 	"github.com/siderolabs/talos/internal/pkg/selinux"
 	"github.com/siderolabs/talos/internal/pkg/selinux/extgen"
+	"github.com/siderolabs/talos/internal/pkg/selinux/fcontext"
 	"github.com/siderolabs/talos/pkg/conditions"
+	"github.com/siderolabs/talos/pkg/machinery/config/config"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	extservices "github.com/siderolabs/talos/pkg/machinery/extensions/services"
 	"github.com/siderolabs/talos/pkg/machinery/resources/network"
@@ -204,11 +206,28 @@ func (svc *Extension) Condition(r runtime.Runtime) conditions.Condition {
 		}
 	}
 
+	// the policy module derived from the spec, and the modules of the machine config which may declare the type of the
+	// service, are compiled, loaded or rejected before the service starts
+	if selinux.IsEnabled() && svc.Spec.RunnerMode != extservices.RunnerModeHost {
+		conds = append(conds, runtimeres.NewSELinuxPolicyCondition(r.State().V1Alpha2().Resources(), svc.selinuxModules(r.Config())))
+	}
+
 	if len(conds) == 0 {
 		return nil
 	}
 
 	return conditions.WaitForAll(conds...)
+}
+
+// selinuxModules lists the SELinuxModule IDs the service waits for: its own and those of the machine config.
+func (svc *Extension) selinuxModules(cfg config.Config) []string {
+	modules := []string{runtimeres.SELinuxModuleExtensionPrefix + svc.Spec.Name}
+
+	if cfg != nil {
+		modules = append(modules, configSELinuxModules(cfg)...)
+	}
+
+	return modules
 }
 
 // DependsOn implements the Service interface.
@@ -359,7 +378,13 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 
 	ociSpecOpts := svc.getOCIOptions(envVars, mounts)
 
-	typ := cmp.Or(config.SELinuxType, constants.SELinuxTypeExtension)
+	typ, message := cmp.Or(config.SELinuxType, constants.SELinuxTypeExtension), ""
+
+	if selinux.IsEnabled() {
+		if typ, message, err = svc.confine(r.State().V1Alpha2().Resources(), config.SELinuxType); err != nil {
+			return nil, err
+		}
+	}
 
 	var containerRunner runner.Runner
 
@@ -378,68 +403,102 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 		runner.WithSelinuxLabel(selinux.Label(typ)),
 	)
 
-	if selinux.IsEnabled() {
-		if containerRunner, err = svc.confine(containerRunner, typ); err != nil {
-			return nil, err
-		}
+	if message != "" {
+		containerRunner = &reportingRunner{Runner: containerRunner, message: message}
 	}
 
 	return restart.New(containerRunner, restart.WithType(restartType)), nil
 }
 
-// confine checks the type of the service against the loaded policy, labels its state directories and reports the
-// type in the service events.
-func (svc *Extension) confine(containerRunner runner.Runner, typ string) (runner.Runner, error) {
-	if err := selinux.CheckContext(selinux.Label(typ)); err != nil {
-		return nil, fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
+// derivedType resolves the type of the service from the module derived from its spec and the policy status.
+func (svc *Extension) derivedType(ctx context.Context, st state.State) (string, map[string]string, string) {
+	id := runtimeres.SELinuxModuleExtensionPrefix + svc.Spec.Name
+
+	var spec *runtimeres.SELinuxModuleSpec
+
+	if module, err := safe.StateGetByID[*runtimeres.SELinuxModule](ctx, st, id); err == nil {
+		spec = module.TypedSpec()
 	}
 
-	for _, mount := range svc.Spec.Container.Mounts {
-		var stateType string
+	status, err := safe.StateGetByID[*runtimeres.SELinuxPolicyStatus](ctx, st, runtimeres.SELinuxPolicyStatusID)
+	loaded := err == nil && slices.Contains(status.TypedSpec().Loaded, id)
 
-		switch extgen.StateKind(mount.Source) {
-		case extgen.KindState:
-			stateType = constants.SELinuxTypeExtensionState
-		case extgen.KindRun:
-			stateType = constants.SELinuxTypeExtensionRun
-		case extgen.KindOther:
-			continue
+	return extgen.ResolvedType("", spec, loaded)
+}
+
+// confinedType returns the type the service runs as, the one of the machine config else the derived one, with the reason
+// of a derived fallback.
+func confinedType(configured, derived, reason string) (string, string) {
+	if configured != "" {
+		return configured, ""
+	}
+
+	return derived, reason
+}
+
+// confine returns the type the service runs as, checked against the loaded policy, after labeling its state
+// directories with the types of its module whatever the type, and the message for the service events.
+func (svc *Extension) confine(st state.State, configured string) (string, string, error) {
+	derived, labels, reason := svc.derivedType(context.Background(), st)
+	typ, reason := confinedType(configured, derived, reason)
+
+	if err := selinux.CheckContext(selinux.Label(typ)); err != nil {
+		if configured != "" {
+			return "", "", fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
+		}
+
+		typ, labels, reason = constants.SELinuxTypeExtension, nil, fmt.Sprintf("type %s is not in the loaded policy", typ)
+	}
+
+	if err := svc.labelStateDirs(labels); err != nil {
+		return "", "", err
+	}
+
+	if reason != "" {
+		reason = " (" + reason + ")"
+	}
+
+	return typ, "Running with SELinux type " + typ + reason, nil
+}
+
+// labelStateDirs gives the state directories of the service the types of its module, or the shared types.
+func (svc *Extension) labelStateDirs(labels map[string]string) error {
+	for _, mount := range svc.Spec.Container.Mounts {
+		stateType := labels[extgen.Normalize(mount.Source)]
+
+		if stateType == "" {
+			switch extgen.StateKind(mount.Source) {
+			case extgen.KindState:
+				stateType = constants.SELinuxTypeExtensionState
+			case extgen.KindRun:
+				stateType = constants.SELinuxTypeExtensionRun
+			case extgen.KindOther:
+				continue
+			}
 		}
 
 		if err := labelStateDir(mount.Source, selinux.FileLabel(stateType)); err != nil {
-			return nil, fmt.Errorf("error labeling %q: %w", mount.Source, err)
+			return fmt.Errorf("error labeling %q: %w", mount.Source, err)
 		}
 	}
 
-	return &reportingRunner{Runner: containerRunner, message: fmt.Sprintf("Running with SELinux type %s", typ)}, nil
+	return nil
 }
 
-// labelStateDir relabels a state directory and its content, once, from the type of the host filesystem or from
-// a previous extension type; a directory carrying any other type is left alone.
+// labelStateDir relabels a state directory; the directory itself is labeled last, so that its label tells the whole tree
+// carries it and a relabel interrupted is resumed at the next start.
 func labelStateDir(path, label string) error {
-	st, err := os.Lstat(path)
-	if err != nil || !st.IsDir() {
-		return err
-	}
-
 	current, err := selinux.GetLabel(path)
-	if err != nil || current == label {
+	if err != nil || current == label || !relabelable(current) {
 		return err
-	}
-
-	if !relabelable(current) {
-		return nil
 	}
 
 	return selinux.SetLabelRecursive(path, label)
 }
 
-// relabelable reports whether a state directory carrying the label may be given to a service: it carries the type
-// of the host filesystem it lives on, or the type of an extension service which no longer applies.
+// relabelable reports whether a state directory carries the type of its filesystem or of a previous extension service.
 func relabelable(label string) bool {
-	typ, _, _ := strings.Cut(strings.TrimPrefix(label, "system_u:object_r:"), ":")
-
-	return slices.Contains([]string{constants.EphemeralSelinuxLabel, constants.RunSelinuxLabel, constants.LogSELinuxLabel}, label) || strings.HasPrefix(typ, "ext_")
+	return slices.Contains([]string{constants.EphemeralSelinuxLabel, constants.RunSelinuxLabel, constants.LogSELinuxLabel}, label) || strings.HasPrefix(fcontext.TypeOf(label), "ext_")
 }
 
 // reportingRunner records a message in the service events at every start.
