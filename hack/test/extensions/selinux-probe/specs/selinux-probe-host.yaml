@@ -1,0 +1,33 @@
+# The host probe: its entrypoint is a binary of the host bind-mounted with /usr/local/sbin, its rootfs is writable,
+# and it mounts /var whole, read-only, above directories Talos labels: the module warns, and the probe checks that
+# the state of the other services and of Talos stays out of reach while its own state is readable there.
+name: selinux-probe-host
+depends:
+  # the state of the main probe must carry its type before the denial is checked
+  - service: ext-selinux-probe
+container:
+  entrypoint: /usr/local/sbin/selinux-probe-host
+  environment:
+    - PROBE_ROLE=host
+  security:
+    writeableRootfs: true
+  mounts:
+    - source: /usr/local/sbin
+      destination: /usr/local/sbin
+      type: bind
+      options:
+        - bind
+        - ro
+    - source: /var/lib/selinux-probe-host
+      destination: /var/lib/selinux-probe-host
+      type: bind
+      options:
+        - bind
+        - rw
+    - source: /var
+      destination: /host/var
+      type: bind
+      options:
+        - bind
+        - ro
+restart: always

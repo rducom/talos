@@ -841,6 +841,12 @@ func (suite *SELinuxSuite) TestNoHostDenials() {
 
 				fields := strings.SplitN(scontext, ":", 4)
 				suite.Require().Len(fields, 4, "unexpected AVC record: %s", line)
+
+				// the selinux-probe test extension checks denials on purpose
+				if strings.HasPrefix(fields[2], "ext_selinux_probe") {
+					continue
+				}
+
 				suite.Assert().True(slices.Contains(podDomains, fields[2]) || strings.Contains(fields[3], ":c"), "host domain denied: %s", line)
 			}
 		}
@@ -989,6 +995,90 @@ func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 		asrt.NotContains(status.TypedSpec().Modules, "config-ceiling")
 		asrt.Empty(status.TypedSpec().Error)
 	})
+}
+
+// TestExtensionProbe reads the verdicts of the selinux-probe test extension (hack/test/extensions/selinux-probe) when it
+// is installed: every access its specs grant works, and what they do not grant is denied; in permissive mode nothing
+// is denied, and the denials show in the audit log instead.
+//
+//nolint:gocyclo
+func (suite *SELinuxSuite) TestExtensionProbe() {
+	node := suite.RandomDiscoveredNodeInternalIP()
+	nodeCtx := client.WithNode(suite.ctx, node)
+
+	if _, err := suite.Client.ServiceInfo(nodeCtx, "ext-selinux-probe"); err != nil {
+		suite.T().Skip("skipping SELinux test since the selinux-probe extension is not installed")
+	}
+
+	cfg := extensions.NewServicesConfigV1Alpha1()
+	cfg.ServiceName = "selinux-probe-config"
+	cfg.ServiceConfigFiles = extensions.ConfigFileList{{ConfigFileContent: "probe: ok\n", ConfigFileMountPath: "/etc/probe/config.yaml"}}
+	cfg.ServiceEnvironment = []string{"PROBE_MESSAGE=hello"}
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, "selinux-probe-config")
+
+	for _, id := range []string{"ext-selinux-probe", "ext-selinux-probe-host", "ext-selinux-probe-config"} {
+		var logs string
+
+		suite.Require().NoError(retry.Constant(2*time.Minute, retry.WithUnits(time.Second)).Retry(func() error {
+			var err error
+
+			// the log of a service which has not started yet is not registered
+			if logs, err = suite.serviceLogs(nodeCtx, id); err != nil {
+				return retry.ExpectedError(err)
+			}
+
+			if !strings.Contains(logs, "probe: done:") {
+				return retry.ExpectedErrorf("%s: the probe has not finished", id)
+			}
+
+			return nil
+		}))
+
+		for line := range strings.SplitSeq(logs, "\n") {
+			if !suite.SelinuxEnforcing && strings.Contains(line, "-denied: FAIL: ") && strings.HasSuffix(line, " is readable") {
+				continue
+			}
+
+			suite.Assert().NotContains(line, ": FAIL:", id)
+		}
+	}
+
+	if suite.SelinuxEnforcing {
+		return
+	}
+
+	audit, err := suite.serviceLogs(nodeCtx, "auditd")
+	suite.Require().NoError(err)
+
+	for _, target := range []string{"kubelet_state_t", "etcd_data_t", "audit_log_t", "ext_selinux_probe_state_t"} {
+		suite.Assert().Regexp("denied  \\{ read \\}.*scontext=system_u:system_r:ext_selinux_probe_host_t:s0 tcontext=system_u:object_r:"+target+":s0 tclass=dir permissive=1", audit)
+	}
+}
+
+// serviceLogs returns the logs of a service on the node.
+func (suite *SELinuxSuite) serviceLogs(nodeCtx context.Context, id string) (string, error) {
+	stream, err := suite.Client.Logs(nodeCtx, constants.SystemContainerdNamespace, common.ContainerDriver_CONTAINERD, id, false, -1)
+	if err != nil {
+		return "", err
+	}
+
+	reader, err := client.ReadStream(stream)
+	if err != nil {
+		return "", err
+	}
+
+	defer reader.Close() //nolint:errcheck
+
+	body, err := io.ReadAll(reader)
+
+	return string(body), err
+}
+
+func selinuxLabel(typ string) string {
+	return "system_u:system_r:" + typ + ":s0"
 }
 
 // TestNoPtrace confirms ptracing system processes is prohibited in enforcing mode.

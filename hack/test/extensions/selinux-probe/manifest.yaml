@@ -1,0 +1,12 @@
+version: v1alpha1
+metadata:
+  name: selinux-probe
+  version: v0.1.0
+  author: Talos SELinux tests
+  description: |
+    Exercises the SELinux confinement of extension services: a rootfs with a real /etc and dynamically linked
+    binaries, state, run, device, /etc and machined socket mounts, a writable rootfs, a host binary as entrypoint,
+    a service configured by ExtensionServiceConfig. Test only, never published.
+  compatibility:
+    talos:
+      version: ">= v1.15.0-alpha.0"
