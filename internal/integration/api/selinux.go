@@ -154,6 +154,9 @@ func (suite *SELinuxSuite) TestFileMountLabels() {
 			expectedLabelsWorker[dir] = "system_u:object_r:pod_file_t:s0"
 		}
 
+		// the audit log of the kube-apiserver carries the fixed level of the pod, the same at every boot
+		expectedLabelsControlPlane[filepath.Join(constants.KubernetesAuditLogDir, "kube-apiserver.log")] = "system_u:object_r:kube_log_t:" + constants.KubernetesAPIServerSELinuxLevel
+
 		// the kubelet relabels its directories at every start, from pod_file_t itself once they carry it
 		_, err := suite.Client.ServiceRestart(nodeCtx, "kubelet")
 		suite.Require().NoError(err)
