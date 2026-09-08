@@ -1,0 +1,6 @@
+name: waiting
+container:
+  entrypoint: ./waiting
+depends:
+  - configuration: true
+restart: always
