@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/cosi-project/runtime/pkg/controller"
 	"github.com/cosi-project/runtime/pkg/safe"
@@ -37,6 +38,7 @@ type ExtensionServiceController struct {
 	ConfigPath       string
 
 	configStatusCache map[string]string
+	waitsForConfig    map[string]bool
 }
 
 // Name implements controller.Controller interface.
@@ -98,6 +100,8 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 		}
 	}
 
+	ctrl.waitsForConfig = map[string]bool{}
+
 	// load services from definitions into the service runner framework
 	extServices := map[string]struct{}{}
 
@@ -128,6 +132,7 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 		}
 
 		extServices[spec.Name] = struct{}{}
+		ctrl.waitsForConfig[spec.Name] = slices.ContainsFunc(spec.Depends, func(dep extservices.Dependency) bool { return dep.Configuration })
 
 		svc := &services.Extension{
 			Spec: spec,
@@ -162,7 +167,13 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 				continue
 			}
 
-			if err = ctrl.handleRestart(ctx, logger, "ext-"+res.Metadata().ID(), res.TypedSpec().SpecVersion); err != nil {
+			if res.TypedSpec().SpecVersion == "1" && ctrl.waitsForConfig[res.Metadata().ID()] {
+				ctrl.configStatusCache[res.Metadata().ID()] = res.TypedSpec().SpecVersion
+
+				continue
+			}
+
+			if err = ctrl.handleRestart(ctx, logger, "ext-"+res.Metadata().ID()); err != nil {
 				return err
 			}
 
@@ -172,7 +183,7 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 		// cleanup configStatusesCache
 		for id := range ctrl.configStatusCache {
 			if _, ok := configStatusesPresent[id]; !ok {
-				if err = ctrl.handleRestart(ctx, logger, "ext-"+id, "nan"); err != nil {
+				if err = ctrl.handleRestart(ctx, logger, "ext-"+id); err != nil {
 					return err
 				}
 
@@ -199,16 +210,10 @@ func (ctrl *ExtensionServiceController) loadSpec(path string) (extservices.Spec,
 	return spec, nil
 }
 
-func (ctrl *ExtensionServiceController) handleRestart(ctx context.Context, logger *zap.Logger, svcName, specVersion string) error {
+func (ctrl *ExtensionServiceController) handleRestart(ctx context.Context, logger *zap.Logger, svcName string) error {
 	_, running, err := ctrl.V1Alpha1Services.IsRunning(svcName)
 	if err != nil {
 		return nil //nolint:nilerr // IsRunning returns an error only if the service is not found, so ignore it
-	}
-
-	// this means it's a new config and the service runner is already waiting for the config to start the service
-	// we don't need restart it again since it will be started automatically
-	if running && specVersion == "1" {
-		return nil
 	}
 
 	logger.Warn("extension service config changed, restarting", zap.String("service", svcName))
