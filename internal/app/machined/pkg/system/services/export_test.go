@@ -54,3 +54,6 @@ func (svc *Extension) ApplyExtensionServiceConfig(
 ) ([]specs.Mount, []string, error) {
 	return svc.applyExtensionServiceConfig(spec, mounts, envVars)
 }
+
+// Relabelable exposes relabelable for tests.
+var Relabelable = relabelable

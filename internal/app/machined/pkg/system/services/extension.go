@@ -5,6 +5,7 @@
 package services
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +14,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/containerd/containerd/api/types/runc/options"
+	containerdclient "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/core/containers"
 	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/containerd/containerd/v2/plugins"
 	"github.com/cosi-project/runtime/pkg/safe"
 	"github.com/cosi-project/runtime/pkg/state"
 	"github.com/hashicorp/go-envparse"
@@ -30,6 +34,8 @@ import (
 	"github.com/siderolabs/talos/internal/pkg/capability"
 	"github.com/siderolabs/talos/internal/pkg/environment"
 	"github.com/siderolabs/talos/internal/pkg/mount/v3"
+	"github.com/siderolabs/talos/internal/pkg/selinux"
+	"github.com/siderolabs/talos/internal/pkg/selinux/extgen"
 	"github.com/siderolabs/talos/pkg/conditions"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	extservices "github.com/siderolabs/talos/pkg/machinery/extensions/services"
@@ -58,14 +64,15 @@ func (svc *Extension) PreFunc(ctx context.Context, r runtime.Runtime) error {
 		return nil
 	}
 
-	// re-mount service rootfs as overlay rw mount to allow containerd to mount there /dev, /proc, etc.
+	// re-mount service rootfs as overlay rw mount to allow containerd to mount there /dev, /proc, etc.;
+	// one SELinux type for the files of the image and the entries containerd creates, whatever the image labels
 	rootfsPath := filepath.Join(constants.ExtensionServiceRootfsPath, svc.Spec.Name)
 
-	// TODO: label system extensions
 	overlay := mount.NewSystemOverlay(
 		[]string{rootfsPath},
 		rootfsPath,
 		nil,
+		mount.WithSelinuxContext(selinux.FileLabel(constants.SELinuxTypeExtensionRootfs)),
 	)
 
 	if _, err := overlay.Mount(); err != nil {
@@ -233,7 +240,6 @@ func (svc *Extension) getOCIOptions(envVars []string, mounts []specs.Mount) []oc
 		oci.WithMounts(mounts),
 		oci.WithHostNamespace(specs.NetworkNamespace),
 		oci.WithHostNamespace(specs.IPCNamespace),
-		oci.WithSelinuxLabel(""),
 		oci.WithApparmorProfile(""),
 		oci.WithCapabilities(capability.AllGrantableCapabilities()),
 		oci.WithAllDevicesAllowed,
@@ -277,9 +283,13 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 
 	mounts := append([]specs.Mount{}, svc.Spec.Container.Mounts...)
 
+	var config runtimeres.ExtensionServiceConfigSpec
+
 	configSpec, err := safe.StateGetByID[*runtimeres.ExtensionServiceConfig](context.Background(), r.State().V1Alpha2().Resources(), svc.Spec.Name)
 	if err == nil {
-		mounts, envVars, err = svc.applyExtensionServiceConfig(configSpec.TypedSpec(), mounts, envVars)
+		config = *configSpec.TypedSpec()
+
+		mounts, envVars, err = svc.applyExtensionServiceConfig(&config, mounts, envVars)
 		if err != nil {
 			return nil, err
 		}
@@ -349,20 +359,100 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 
 	ociSpecOpts := svc.getOCIOptions(envVars, mounts)
 
-	return restart.New(
-		containerd.NewRunner(
-			logToConsole,
-			&args,
-			runner.WithLoggingManager(r.Logging()),
-			runner.WithNamespace(constants.SystemContainerdNamespace),
-			runner.WithContainerdAddress(constants.SystemContainerdAddress),
-			runner.WithEnv(environment.Get(r.Config())),
-			runner.WithOCISpecOpts(ociSpecOpts...),
-			runner.WithCgroupPath(filepath.Join(constants.CgroupExtensions, svc.Spec.Name)),
-			runner.WithOOMScoreAdj(-600),
-		),
-		restart.WithType(restartType),
-	), nil
+	typ := cmp.Or(config.SELinuxType, constants.SELinuxTypeExtension)
+
+	var containerRunner runner.Runner
+
+	containerRunner = containerd.NewRunner(
+		logToConsole,
+		&args,
+		runner.WithLoggingManager(r.Logging()),
+		runner.WithNamespace(constants.SystemContainerdNamespace),
+		runner.WithContainerdAddress(constants.SystemContainerdAddress),
+		runner.WithEnv(environment.Get(r.Config())),
+		runner.WithOCISpecOpts(ociSpecOpts...),
+		// no session keyring: a keyring would keep the type of the service after the type left the policy
+		runner.WithContainerOpts(containerdclient.WithRuntime(plugins.RuntimeRuncV2, &options.Options{NoNewKeyring: true})),
+		runner.WithCgroupPath(filepath.Join(constants.CgroupExtensions, svc.Spec.Name)),
+		runner.WithOOMScoreAdj(-600),
+		runner.WithSelinuxLabel(selinux.Label(typ)),
+	)
+
+	if selinux.IsEnabled() {
+		if containerRunner, err = svc.confine(containerRunner, typ); err != nil {
+			return nil, err
+		}
+	}
+
+	return restart.New(containerRunner, restart.WithType(restartType)), nil
+}
+
+// confine checks the type of the service against the loaded policy, labels its state directories and reports the
+// type in the service events.
+func (svc *Extension) confine(containerRunner runner.Runner, typ string) (runner.Runner, error) {
+	if err := selinux.CheckContext(selinux.Label(typ)); err != nil {
+		return nil, fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
+	}
+
+	for _, mount := range svc.Spec.Container.Mounts {
+		var stateType string
+
+		switch extgen.StateKind(mount.Source) {
+		case extgen.KindState:
+			stateType = constants.SELinuxTypeExtensionState
+		case extgen.KindRun:
+			stateType = constants.SELinuxTypeExtensionRun
+		case extgen.KindOther:
+			continue
+		}
+
+		if err := labelStateDir(mount.Source, selinux.FileLabel(stateType)); err != nil {
+			return nil, fmt.Errorf("error labeling %q: %w", mount.Source, err)
+		}
+	}
+
+	return &reportingRunner{Runner: containerRunner, message: fmt.Sprintf("Running with SELinux type %s", typ)}, nil
+}
+
+// labelStateDir relabels a state directory and its content, once, from the type of the host filesystem or from
+// a previous extension type; a directory carrying any other type is left alone.
+func labelStateDir(path, label string) error {
+	st, err := os.Lstat(path)
+	if err != nil || !st.IsDir() {
+		return err
+	}
+
+	current, err := selinux.GetLabel(path)
+	if err != nil || current == label {
+		return err
+	}
+
+	if !relabelable(current) {
+		return nil
+	}
+
+	return selinux.SetLabelRecursive(path, label)
+}
+
+// relabelable reports whether a state directory carrying the label may be given to a service: it carries the type
+// of the host filesystem it lives on, or the type of an extension service which no longer applies.
+func relabelable(label string) bool {
+	typ, _, _ := strings.Cut(strings.TrimPrefix(label, "system_u:object_r:"), ":")
+
+	return slices.Contains([]string{constants.EphemeralSelinuxLabel, constants.RunSelinuxLabel, constants.LogSELinuxLabel}, label) || strings.HasPrefix(typ, "ext_")
+}
+
+// reportingRunner records a message in the service events at every start.
+type reportingRunner struct {
+	runner.Runner
+
+	message string
+}
+
+func (r *reportingRunner) Run(ctx context.Context, eventSink events.Recorder, onStart runner.OnStart) (runner.Status, error) {
+	eventSink(events.StateStarting, "%s", r.message)
+
+	return r.Runner.Run(ctx, eventSink, onStart)
 }
 
 func (svc *Extension) hostProcessArgs(r runtime.Runtime) (runner.Args, error) {

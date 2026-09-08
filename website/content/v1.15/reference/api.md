@@ -9536,6 +9536,7 @@ ExtensionServiceConfigSpec describes status of rendered extensions service confi
 | ----- | ---- | ----- | ----------- |
 | files | [ExtensionServiceConfigFile](#talos.resource.definitions.runtime.ExtensionServiceConfigFile) | repeated |  |
 | environment | [string](#string) | repeated |  |
+| se_linux_type | [string](#string) |  | SELinuxType is the type the service runs as, empty to let Talos choose it. |
 
 
 

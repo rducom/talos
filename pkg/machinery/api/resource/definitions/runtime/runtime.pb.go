@@ -431,9 +431,11 @@ func (x *ExtensionServiceConfigFile) GetMountPath() string {
 
 // ExtensionServiceConfigSpec describes status of rendered extensions service config files.
 type ExtensionServiceConfigSpec struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
-	Files         []*ExtensionServiceConfigFile `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
-	Environment   []string                      `protobuf:"bytes,2,rep,name=environment,proto3" json:"environment,omitempty"`
+	state       protoimpl.MessageState        `protogen:"open.v1"`
+	Files       []*ExtensionServiceConfigFile `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	Environment []string                      `protobuf:"bytes,2,rep,name=environment,proto3" json:"environment,omitempty"`
+	// SELinuxType is the type the service runs as, empty to let Talos choose it.
+	SeLinuxType   string `protobuf:"bytes,3,opt,name=se_linux_type,json=seLinuxType,proto3" json:"se_linux_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -480,6 +482,13 @@ func (x *ExtensionServiceConfigSpec) GetEnvironment() []string {
 		return x.Environment
 	}
 	return nil
+}
+
+func (x *ExtensionServiceConfigSpec) GetSeLinuxType() string {
+	if x != nil {
+		return x.SeLinuxType
+	}
+	return ""
 }
 
 // ExtensionServiceConfigStatusSpec describes status of rendered extensions service config files.
@@ -2249,10 +2258,11 @@ const file_resource_definitions_runtime_runtime_proto_rawDesc = "" +
 	"\x1aExtensionServiceConfigFile\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\x12\x1d\n" +
 	"\n" +
-	"mount_path\x18\x02 \x01(\tR\tmountPath\"\x94\x01\n" +
+	"mount_path\x18\x02 \x01(\tR\tmountPath\"\xb8\x01\n" +
 	"\x1aExtensionServiceConfigSpec\x12T\n" +
 	"\x05files\x18\x01 \x03(\v2>.talos.resource.definitions.runtime.ExtensionServiceConfigFileR\x05files\x12 \n" +
-	"\venvironment\x18\x02 \x03(\tR\venvironment\"E\n" +
+	"\venvironment\x18\x02 \x03(\tR\venvironment\x12\"\n" +
+	"\rse_linux_type\x18\x03 \x01(\tR\vseLinuxType\"E\n" +
 	" ExtensionServiceConfigStatusSpec\x12!\n" +
 	"\fspec_version\x18\x01 \x01(\tR\vspecVersion\"n\n" +
 	"\x19ImageFactorySchematicSpec\x12!\n" +

@@ -8,6 +8,7 @@ package extensions
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/siderolabs/gen/xslices"
 
@@ -59,7 +60,26 @@ type ServiceConfigV1Alpha1 struct {
 	//   description: |
 	//     The environment for the extension service.
 	ServiceEnvironment []string `yaml:"environment,omitempty"`
+	//   description: |
+	//     SELinux settings of the extension service, ignored for a service in host runner mode.
+	//     A change of the settings restarts the service.
+	ServiceSELinux *ServiceSELinux `yaml:"selinux,omitempty"`
 }
+
+// ServiceSELinux is the SELinux settings of an extension service.
+type ServiceSELinux struct {
+	//   description: |
+	//     SELinux type the service runs as, in place of the type Talos derives from the service spec.
+	//     The type must exist in the loaded policy: `ext_t` and `ext_privileged_t` come with the base policy,
+	//     any other is declared by a SELinuxPolicyConfig document, with the `ext_domain` or `ext_privileged_domain` macro.
+	//     A service which failed on a type absent from the policy restarts with the next version of this document.
+	//   examples:
+	//     - value: >
+	//        "ext_privileged_t"
+	SELinuxType string `yaml:"type,omitempty"`
+}
+
+var selinuxTypeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*_t$`)
 
 // ConfigFileList is a list of ConfigFiles.
 //
@@ -133,27 +153,37 @@ func (e *ServiceConfigV1Alpha1) Validate(validation.RuntimeMode, ...validation.O
 		return nil, fmt.Errorf("name is required")
 	}
 
-	if len(e.ServiceConfigFiles) == 0 && len(e.ServiceEnvironment) == 0 {
-		if len(e.ServiceConfigFiles) == 0 {
-			return nil, fmt.Errorf("no config files found for extension %q", e.ServiceName)
-		}
-
-		if len(e.ServiceEnvironment) == 0 {
-			return nil, fmt.Errorf("no environment defined for extension %q", e.ServiceName)
-		}
+	if len(e.ServiceConfigFiles) == 0 && len(e.ServiceEnvironment) == 0 && e.ServiceSELinux == nil {
+		return nil, fmt.Errorf("no config files, environment or selinux settings found for extension %q", e.ServiceName)
 	}
 
-	for _, file := range e.ServiceConfigFiles {
+	if err := e.ServiceSELinux.validate(e.ServiceName); err != nil {
+		return nil, err
+	}
+
+	return nil, e.ServiceConfigFiles.validate(e.ServiceName)
+}
+
+func (s *ServiceSELinux) validate(name string) error {
+	if s != nil && s.SELinuxType != "" && !selinuxTypeRe.MatchString(s.SELinuxType) {
+		return fmt.Errorf("invalid selinux type %q for extension %q", s.SELinuxType, name)
+	}
+
+	return nil
+}
+
+func (list ConfigFileList) validate(name string) error {
+	for _, file := range list {
 		if file.ConfigFileContent == "" {
-			return nil, fmt.Errorf("extension content is required for extension %q", e.ServiceName)
+			return fmt.Errorf("extension content is required for extension %q", name)
 		}
 
 		if file.ConfigFileMountPath == "" {
-			return nil, fmt.Errorf("extension mount path is required for extension %q", e.ServiceName)
+			return fmt.Errorf("extension mount path is required for extension %q", name)
 		}
 	}
 
-	return nil, nil
+	return nil
 }
 
 // Name implements config.ExtensionServiceConfig interface.
@@ -171,6 +201,15 @@ func (e *ServiceConfigV1Alpha1) ConfigFiles() []config.ExtensionServiceConfigFil
 // Environment implements config.ExtensionServiceConfig interface.
 func (e *ServiceConfigV1Alpha1) Environment() []string {
 	return e.ServiceEnvironment
+}
+
+// SELinuxType implements config.ExtensionServiceConfig interface.
+func (e *ServiceConfigV1Alpha1) SELinuxType() string {
+	if e.ServiceSELinux == nil {
+		return ""
+	}
+
+	return e.ServiceSELinux.SELinuxType
 }
 
 // Content implements config.ExtensionServiceConfigFile interface.

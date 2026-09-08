@@ -9,6 +9,8 @@ type ExtensionServiceConfig interface {
 	Name() string
 	ConfigFiles() []ExtensionServiceConfigFile
 	Environment() []string
+	// SELinuxType is the type the service runs as, empty to let Talos choose it.
+	SELinuxType() string
 }
 
 // ExtensionServiceConfigFile is a config file for extension services.

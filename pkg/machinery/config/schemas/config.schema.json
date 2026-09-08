@@ -1913,6 +1913,13 @@
           "description": "The environment for the extension service.\n",
           "markdownDescription": "The environment for the extension service.",
           "x-intellij-html-description": "\u003cp\u003eThe environment for the extension service.\u003c/p\u003e\n"
+        },
+        "selinux": {
+          "$ref": "#/$defs/extensions.ServiceSELinux",
+          "title": "selinux",
+          "description": "SELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.\n",
+          "markdownDescription": "SELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.",
+          "x-intellij-html-description": "\u003cp\u003eSELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -1923,6 +1930,20 @@
         "name"
       ],
       "description": "ExtensionServiceConfig is a extensionserviceconfig document."
+    },
+    "extensions.ServiceSELinux": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "type",
+          "description": "SELinux type the service runs as, in place of the type Talos derives from the service spec.\nThe type must exist in the loaded policy: ext_t and ext_privileged_t come with the base policy,\nany other is declared by a SELinuxPolicyConfig document, with the ext_domain or ext_privileged_domain macro.\nA service which failed on a type absent from the policy restarts with the next version of this document.\n",
+          "markdownDescription": "SELinux type the service runs as, in place of the type Talos derives from the service spec.\nThe type must exist in the loaded policy: `ext_t` and `ext_privileged_t` come with the base policy,\nany other is declared by a SELinuxPolicyConfig document, with the `ext_domain` or `ext_privileged_domain` macro.\nA service which failed on a type absent from the policy restarts with the next version of this document.",
+          "x-intellij-html-description": "\u003cp\u003eSELinux type the service runs as, in place of the type Talos derives from the service spec.\nThe type must exist in the loaded policy: \u003ccode\u003eext_t\u003c/code\u003e and \u003ccode\u003eext_privileged_t\u003c/code\u003e come with the base policy,\nany other is declared by a SELinuxPolicyConfig document, with the \u003ccode\u003eext_domain\u003c/code\u003e or \u003ccode\u003eext_privileged_domain\u003c/code\u003e macro.\nA service which failed on a type absent from the policy restarts with the next version of this document.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ServiceSELinux is the SELinux settings of an extension service."
     },
     "hardware.PCIDriverRebindConfigV1Alpha1": {
       "properties": {
