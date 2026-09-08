@@ -13,7 +13,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
+	"github.com/cosi-project/runtime/pkg/state"
 	"github.com/elastic/go-libaudit/v2"
 	"github.com/elastic/go-libaudit/v2/auparse"
 
@@ -21,14 +23,15 @@ import (
 )
 
 // Main is an entrypoint to the auditd service.
-func Main(ctx context.Context, _ runtime.Runtime, logWriter io.Writer) error {
-	return Run(ctx, logWriter)
+func Main(ctx context.Context, r runtime.Runtime, logWriter io.Writer) error {
+	return Run(ctx, logWriter, r.State().V1Alpha2().Resources())
 }
 
-// Run starts the auditd service.
+// Run starts the auditd service, which logs the audit events and publishes the AVC records per source domain as
+// SELinuxAccessLog resources.
 //
 // based on https://github.com/elastic/go-libaudit/blob/main/cmd/audit/audit.go
-func Run(ctx context.Context, logWriter io.Writer) error {
+func Run(ctx context.Context, logWriter io.Writer, st state.State) error {
 	var wg sync.WaitGroup
 
 	defer wg.Wait()
@@ -82,10 +85,40 @@ func Run(ctx context.Context, logWriter io.Writer) error {
 		return fmt.Errorf("failed to set audit PID: %w", err)
 	}
 
-	return receiveEvents(ctx, client, logWriter)
+	accessLogs := newAccessLogger(st)
+
+	wg.Go(func() {
+		publishAccessLogs(ctx, client, accessLogs, logWriter)
+	})
+
+	return receiveEvents(ctx, client, logWriter, accessLogs)
 }
 
-func receiveEvents(ctx context.Context, client *libaudit.AuditClient, logWriter io.Writer) error {
+// publishAccessLogs flushes the access logs every two seconds and asks the kernel for its audit status, whose reply
+// carries the count of lost records, every ten seconds.
+func publishAccessLogs(ctx context.Context, client *libaudit.AuditClient, accessLogs *accessLogger, logWriter io.Writer) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for tick := 0; ; tick++ {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		if err := accessLogs.flush(ctx); err != nil && ctx.Err() == nil {
+			fmt.Fprintf(logWriter, "failed to publish the access logs: %s\n", err)
+		}
+
+		if tick%5 == 0 {
+			client.GetStatusAsync(false) //nolint:errcheck
+		}
+	}
+}
+
+//nolint:gocyclo
+func receiveEvents(ctx context.Context, client *libaudit.AuditClient, logWriter io.Writer, accessLogs *accessLogger) error {
 	for {
 		rawEvent, err := client.Receive(false)
 		if err != nil {
@@ -110,6 +143,20 @@ func receiveEvents(ctx context.Context, client *libaudit.AuditClient, logWriter 
 		case <-ctx.Done():
 			return nil
 		default:
+		}
+
+		if rawEvent.Type == auparse.AUDIT_GET {
+			var status libaudit.AuditStatus
+
+			if err = status.FromWireFormat(rawEvent.Data); err == nil {
+				accessLogs.setLost(uint64(status.Lost))
+			}
+		}
+
+		if rawEvent.Type == auparse.AUDIT_AVC {
+			if record, ok := parseAVC(string(rawEvent.Data)); ok {
+				accessLogs.record(record, time.Now())
+			}
 		}
 
 		// Messages from 1100-2999 are valid audit messages.

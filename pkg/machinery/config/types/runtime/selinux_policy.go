@@ -73,6 +73,11 @@ type SELinuxPolicyConfigV1Alpha1 struct {
 	//     A type named `ext_<x>_t` collides with the module Talos derives for an extension service `x`.
 	//   schemaRequired: true
 	PolicyContent string `yaml:"content"`
+	//   description: |
+	//     Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the
+	//     accesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the
+	//     exercised ones.
+	PolicyAudit bool `yaml:"audit,omitempty"`
 }
 
 // NewSELinuxPolicyConfigV1Alpha1 creates a new SELinuxPolicyConfig document.
@@ -106,6 +111,11 @@ func (s *SELinuxPolicyConfigV1Alpha1) Name() string {
 // Content implements config.SELinuxPolicyConfig interface.
 func (s *SELinuxPolicyConfigV1Alpha1) Content() string {
 	return s.PolicyContent
+}
+
+// Audit implements config.SELinuxPolicyConfig interface.
+func (s *SELinuxPolicyConfigV1Alpha1) Audit() bool {
+	return s.PolicyAudit
 }
 
 // SELinuxPolicyConfigSignal implements config.SELinuxPolicyConfig interface.

@@ -14,6 +14,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 
 	common "github.com/siderolabs/talos/pkg/machinery/api/common"
 	enums "github.com/siderolabs/talos/pkg/machinery/api/resource/definitions/enums"
@@ -435,7 +436,9 @@ type ExtensionServiceConfigSpec struct {
 	Files       []*ExtensionServiceConfigFile `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
 	Environment []string                      `protobuf:"bytes,2,rep,name=environment,proto3" json:"environment,omitempty"`
 	// SELinuxType is the type the service runs as, empty to let Talos choose it.
-	SeLinuxType   string `protobuf:"bytes,3,opt,name=se_linux_type,json=seLinuxType,proto3" json:"se_linux_type,omitempty"`
+	SeLinuxType string `protobuf:"bytes,3,opt,name=se_linux_type,json=seLinuxType,proto3" json:"se_linux_type,omitempty"`
+	// SELinuxAudit reports whether the permissions the service exercises are audited.
+	SeLinuxAudit  bool `protobuf:"varint,4,opt,name=se_linux_audit,json=seLinuxAudit,proto3" json:"se_linux_audit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -489,6 +492,13 @@ func (x *ExtensionServiceConfigSpec) GetSeLinuxType() string {
 		return x.SeLinuxType
 	}
 	return ""
+}
+
+func (x *ExtensionServiceConfigSpec) GetSeLinuxAudit() bool {
+	if x != nil {
+		return x.SeLinuxAudit
+	}
+	return false
 }
 
 // ExtensionServiceConfigStatusSpec describes status of rendered extensions service config files.
@@ -1694,6 +1704,302 @@ func (x *SBOMItemSpec) GetExtension() bool {
 	return false
 }
 
+// SELinuxAccess is a permission on a class of objects of a type, with the observations of its use.
+type SELinuxAccess struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Target     string                 `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Class      string                 `protobuf:"bytes,2,opt,name=class,proto3" json:"class,omitempty"`
+	Permission string                 `protobuf:"bytes,3,opt,name=permission,proto3" json:"permission,omitempty"`
+	// Count of the records, none for a permission never observed.
+	Count uint64                 `protobuf:"varint,4,opt,name=count,proto3" json:"count,omitempty"`
+	First *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=first,proto3" json:"first,omitempty"`
+	Last  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=last,proto3" json:"last,omitempty"`
+	// Permissive reports a denial the kernel did not apply.
+	Permissive bool `protobuf:"varint,7,opt,name=permissive,proto3" json:"permissive,omitempty"`
+	// Comm and Path of the last record.
+	Comm          string `protobuf:"bytes,8,opt,name=comm,proto3" json:"comm,omitempty"`
+	Path          string `protobuf:"bytes,9,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SELinuxAccess) Reset() {
+	*x = SELinuxAccess{}
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SELinuxAccess) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SELinuxAccess) ProtoMessage() {}
+
+func (x *SELinuxAccess) ProtoReflect() protoreflect.Message {
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SELinuxAccess.ProtoReflect.Descriptor instead.
+func (*SELinuxAccess) Descriptor() ([]byte, []int) {
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *SELinuxAccess) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *SELinuxAccess) GetClass() string {
+	if x != nil {
+		return x.Class
+	}
+	return ""
+}
+
+func (x *SELinuxAccess) GetPermission() string {
+	if x != nil {
+		return x.Permission
+	}
+	return ""
+}
+
+func (x *SELinuxAccess) GetCount() uint64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *SELinuxAccess) GetFirst() *timestamppb.Timestamp {
+	if x != nil {
+		return x.First
+	}
+	return nil
+}
+
+func (x *SELinuxAccess) GetLast() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Last
+	}
+	return nil
+}
+
+func (x *SELinuxAccess) GetPermissive() bool {
+	if x != nil {
+		return x.Permissive
+	}
+	return false
+}
+
+func (x *SELinuxAccess) GetComm() string {
+	if x != nil {
+		return x.Comm
+	}
+	return ""
+}
+
+func (x *SELinuxAccess) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+// SELinuxAccessLogSpec describes the SELinuxAccessLog resource.
+type SELinuxAccessLogSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Denied are the accesses the kernel refused, or would have refused in permissive mode.
+	Denied []*SELinuxAccess `protobuf:"bytes,1,rep,name=denied,proto3" json:"denied,omitempty"`
+	// Granted are the accesses auditallow rules recorded.
+	Granted []*SELinuxAccess `protobuf:"bytes,2,rep,name=granted,proto3" json:"granted,omitempty"`
+	// Lost is the count of records the kernel dropped since boot, at the last update.
+	Lost uint64 `protobuf:"varint,3,opt,name=lost,proto3" json:"lost,omitempty"`
+	// Truncated reports that the log reached its size and dropped new accesses.
+	Truncated     bool `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SELinuxAccessLogSpec) Reset() {
+	*x = SELinuxAccessLogSpec{}
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SELinuxAccessLogSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SELinuxAccessLogSpec) ProtoMessage() {}
+
+func (x *SELinuxAccessLogSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SELinuxAccessLogSpec.ProtoReflect.Descriptor instead.
+func (*SELinuxAccessLogSpec) Descriptor() ([]byte, []int) {
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SELinuxAccessLogSpec) GetDenied() []*SELinuxAccess {
+	if x != nil {
+		return x.Denied
+	}
+	return nil
+}
+
+func (x *SELinuxAccessLogSpec) GetGranted() []*SELinuxAccess {
+	if x != nil {
+		return x.Granted
+	}
+	return nil
+}
+
+func (x *SELinuxAccessLogSpec) GetLost() uint64 {
+	if x != nil {
+		return x.Lost
+	}
+	return 0
+}
+
+func (x *SELinuxAccessLogSpec) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+// SELinuxDomainStatusSpec describes the SELinuxDomainStatus resource.
+type SELinuxDomainStatusSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Exercised are the granted accesses observed since ObservedSince.
+	Exercised []*SELinuxAccess `protobuf:"bytes,1,rep,name=exercised,proto3" json:"exercised,omitempty"`
+	// Unexercised are the granted accesses not observed since ObservedSince.
+	Unexercised []*SELinuxAccess `protobuf:"bytes,2,rep,name=unexercised,proto3" json:"unexercised,omitempty"`
+	// ObservedSince is the start of the audit.
+	ObservedSince *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=observed_since,json=observedSince,proto3" json:"observed_since,omitempty"`
+	// Rounds counts the reloads of the audit module since ObservedSince.
+	Rounds uint32 `protobuf:"varint,4,opt,name=rounds,proto3" json:"rounds,omitempty"`
+	// LostRecords counts the audit records the kernel dropped since ObservedSince: an exercised access may have been missed.
+	LostRecords uint64 `protobuf:"varint,5,opt,name=lost_records,json=lostRecords,proto3" json:"lost_records,omitempty"`
+	// Truncated reports that a list reached its size.
+	Truncated bool `protobuf:"varint,6,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// NarrowedModule is a policy module granting the domain the exercised accesses only; it names the types of the loaded
+	// policy, modules included, and compiles as long as they do. The module derived for an extension service declares its
+	// type already: rename the type before loading the module, and select it with selinux.type.
+	NarrowedModule string `protobuf:"bytes,7,opt,name=narrowed_module,json=narrowedModule,proto3" json:"narrowed_module,omitempty"`
+	// SuggestedAllows are the accesses the domain was denied since ObservedSince, as allow rules to sort out.
+	SuggestedAllows string `protobuf:"bytes,8,opt,name=suggested_allows,json=suggestedAllows,proto3" json:"suggested_allows,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SELinuxDomainStatusSpec) Reset() {
+	*x = SELinuxDomainStatusSpec{}
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SELinuxDomainStatusSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SELinuxDomainStatusSpec) ProtoMessage() {}
+
+func (x *SELinuxDomainStatusSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SELinuxDomainStatusSpec.ProtoReflect.Descriptor instead.
+func (*SELinuxDomainStatusSpec) Descriptor() ([]byte, []int) {
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *SELinuxDomainStatusSpec) GetExercised() []*SELinuxAccess {
+	if x != nil {
+		return x.Exercised
+	}
+	return nil
+}
+
+func (x *SELinuxDomainStatusSpec) GetUnexercised() []*SELinuxAccess {
+	if x != nil {
+		return x.Unexercised
+	}
+	return nil
+}
+
+func (x *SELinuxDomainStatusSpec) GetObservedSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedSince
+	}
+	return nil
+}
+
+func (x *SELinuxDomainStatusSpec) GetRounds() uint32 {
+	if x != nil {
+		return x.Rounds
+	}
+	return 0
+}
+
+func (x *SELinuxDomainStatusSpec) GetLostRecords() uint64 {
+	if x != nil {
+		return x.LostRecords
+	}
+	return 0
+}
+
+func (x *SELinuxDomainStatusSpec) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *SELinuxDomainStatusSpec) GetNarrowedModule() string {
+	if x != nil {
+		return x.NarrowedModule
+	}
+	return ""
+}
+
+func (x *SELinuxDomainStatusSpec) GetSuggestedAllows() string {
+	if x != nil {
+		return x.SuggestedAllows
+	}
+	return ""
+}
+
 // SELinuxModuleSpec describes the SELinuxModule resource.
 type SELinuxModuleSpec struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1713,7 +2019,7 @@ type SELinuxModuleSpec struct {
 
 func (x *SELinuxModuleSpec) Reset() {
 	*x = SELinuxModuleSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[28]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1725,7 +2031,7 @@ func (x *SELinuxModuleSpec) String() string {
 func (*SELinuxModuleSpec) ProtoMessage() {}
 
 func (x *SELinuxModuleSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[28]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1738,7 +2044,7 @@ func (x *SELinuxModuleSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SELinuxModuleSpec.ProtoReflect.Descriptor instead.
 func (*SELinuxModuleSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{28}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SELinuxModuleSpec) GetContent() string {
@@ -1791,7 +2097,7 @@ type SELinuxPolicyStatusSpec struct {
 
 func (x *SELinuxPolicyStatusSpec) Reset() {
 	*x = SELinuxPolicyStatusSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[29]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1803,7 +2109,7 @@ func (x *SELinuxPolicyStatusSpec) String() string {
 func (*SELinuxPolicyStatusSpec) ProtoMessage() {}
 
 func (x *SELinuxPolicyStatusSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[29]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1816,7 +2122,7 @@ func (x *SELinuxPolicyStatusSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SELinuxPolicyStatusSpec.ProtoReflect.Descriptor instead.
 func (*SELinuxPolicyStatusSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{29}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *SELinuxPolicyStatusSpec) GetModules() []string {
@@ -1857,7 +2163,7 @@ type SecurityStateSpec struct {
 
 func (x *SecurityStateSpec) Reset() {
 	*x = SecurityStateSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[30]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1869,7 +2175,7 @@ func (x *SecurityStateSpec) String() string {
 func (*SecurityStateSpec) ProtoMessage() {}
 
 func (x *SecurityStateSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[30]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1882,7 +2188,7 @@ func (x *SecurityStateSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecurityStateSpec.ProtoReflect.Descriptor instead.
 func (*SecurityStateSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{30}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *SecurityStateSpec) GetSecureBoot() bool {
@@ -1954,7 +2260,7 @@ type ServicePIDSpec struct {
 
 func (x *ServicePIDSpec) Reset() {
 	*x = ServicePIDSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[31]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1966,7 +2272,7 @@ func (x *ServicePIDSpec) String() string {
 func (*ServicePIDSpec) ProtoMessage() {}
 
 func (x *ServicePIDSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[31]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1979,7 +2285,7 @@ func (x *ServicePIDSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServicePIDSpec.ProtoReflect.Descriptor instead.
 func (*ServicePIDSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{31}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ServicePIDSpec) GetPid() int32 {
@@ -2008,7 +2314,7 @@ type UnattendedInstallStatusSpec struct {
 
 func (x *UnattendedInstallStatusSpec) Reset() {
 	*x = UnattendedInstallStatusSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[32]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2020,7 +2326,7 @@ func (x *UnattendedInstallStatusSpec) String() string {
 func (*UnattendedInstallStatusSpec) ProtoMessage() {}
 
 func (x *UnattendedInstallStatusSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[32]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2033,7 +2339,7 @@ func (x *UnattendedInstallStatusSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnattendedInstallStatusSpec.ProtoReflect.Descriptor instead.
 func (*UnattendedInstallStatusSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{32}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *UnattendedInstallStatusSpec) GetImage() string {
@@ -2067,7 +2373,7 @@ type UniqueMachineTokenSpec struct {
 
 func (x *UniqueMachineTokenSpec) Reset() {
 	*x = UniqueMachineTokenSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[33]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2079,7 +2385,7 @@ func (x *UniqueMachineTokenSpec) String() string {
 func (*UniqueMachineTokenSpec) ProtoMessage() {}
 
 func (x *UniqueMachineTokenSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[33]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2092,7 +2398,7 @@ func (x *UniqueMachineTokenSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UniqueMachineTokenSpec.ProtoReflect.Descriptor instead.
 func (*UniqueMachineTokenSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{33}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *UniqueMachineTokenSpec) GetToken() string {
@@ -2113,7 +2419,7 @@ type UnmetCondition struct {
 
 func (x *UnmetCondition) Reset() {
 	*x = UnmetCondition{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[34]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2125,7 +2431,7 @@ func (x *UnmetCondition) String() string {
 func (*UnmetCondition) ProtoMessage() {}
 
 func (x *UnmetCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[34]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2138,7 +2444,7 @@ func (x *UnmetCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnmetCondition.ProtoReflect.Descriptor instead.
 func (*UnmetCondition) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{34}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *UnmetCondition) GetName() string {
@@ -2166,7 +2472,7 @@ type VersionSpec struct {
 
 func (x *VersionSpec) Reset() {
 	*x = VersionSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[35]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2178,7 +2484,7 @@ func (x *VersionSpec) String() string {
 func (*VersionSpec) ProtoMessage() {}
 
 func (x *VersionSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[35]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2191,7 +2497,7 @@ func (x *VersionSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionSpec.ProtoReflect.Descriptor instead.
 func (*VersionSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{35}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *VersionSpec) GetVersion() string {
@@ -2219,7 +2525,7 @@ type WatchdogTimerConfigSpec struct {
 
 func (x *WatchdogTimerConfigSpec) Reset() {
 	*x = WatchdogTimerConfigSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[36]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2231,7 +2537,7 @@ func (x *WatchdogTimerConfigSpec) String() string {
 func (*WatchdogTimerConfigSpec) ProtoMessage() {}
 
 func (x *WatchdogTimerConfigSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[36]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2244,7 +2550,7 @@ func (x *WatchdogTimerConfigSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchdogTimerConfigSpec.ProtoReflect.Descriptor instead.
 func (*WatchdogTimerConfigSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{36}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *WatchdogTimerConfigSpec) GetDevice() string {
@@ -2273,7 +2579,7 @@ type WatchdogTimerStatusSpec struct {
 
 func (x *WatchdogTimerStatusSpec) Reset() {
 	*x = WatchdogTimerStatusSpec{}
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[37]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2285,7 +2591,7 @@ func (x *WatchdogTimerStatusSpec) String() string {
 func (*WatchdogTimerStatusSpec) ProtoMessage() {}
 
 func (x *WatchdogTimerStatusSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[37]
+	mi := &file_resource_definitions_runtime_runtime_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2298,7 +2604,7 @@ func (x *WatchdogTimerStatusSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchdogTimerStatusSpec.ProtoReflect.Descriptor instead.
 func (*WatchdogTimerStatusSpec) Descriptor() ([]byte, []int) {
-	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{37}
+	return file_resource_definitions_runtime_runtime_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *WatchdogTimerStatusSpec) GetDevice() string {
@@ -2326,7 +2632,7 @@ var File_resource_definitions_runtime_runtime_proto protoreflect.FileDescriptor
 
 const file_resource_definitions_runtime_runtime_proto_rawDesc = "" +
 	"\n" +
-	"*resource/definitions/runtime/runtime.proto\x12\"talos.resource.definitions.runtime\x1a\x13common/common.proto\x1a\x1egoogle/protobuf/duration.proto\x1a&resource/definitions/enums/enums.proto\"\xdc\x01\n" +
+	"*resource/definitions/runtime/runtime.proto\x12\"talos.resource.definitions.runtime\x1a\x13common/common.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&resource/definitions/enums/enums.proto\"\xdc\x01\n" +
 	"\x14APIServiceConfigSpec\x12%\n" +
 	"\x0elisten_address\x18\x01 \x01(\tR\rlistenAddress\x122\n" +
 	"\x15node_routing_disabled\x18\x02 \x01(\bR\x13nodeRoutingDisabled\x12,\n" +
@@ -2349,11 +2655,12 @@ const file_resource_definitions_runtime_runtime_proto_rawDesc = "" +
 	"\x1aExtensionServiceConfigFile\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\x12\x1d\n" +
 	"\n" +
-	"mount_path\x18\x02 \x01(\tR\tmountPath\"\xb8\x01\n" +
+	"mount_path\x18\x02 \x01(\tR\tmountPath\"\xde\x01\n" +
 	"\x1aExtensionServiceConfigSpec\x12T\n" +
 	"\x05files\x18\x01 \x03(\v2>.talos.resource.definitions.runtime.ExtensionServiceConfigFileR\x05files\x12 \n" +
 	"\venvironment\x18\x02 \x03(\tR\venvironment\x12\"\n" +
-	"\rse_linux_type\x18\x03 \x01(\tR\vseLinuxType\"E\n" +
+	"\rse_linux_type\x18\x03 \x01(\tR\vseLinuxType\x12$\n" +
+	"\x0ese_linux_audit\x18\x04 \x01(\bR\fseLinuxAudit\"E\n" +
 	" ExtensionServiceConfigStatusSpec\x12!\n" +
 	"\fspec_version\x18\x01 \x01(\tR\vspecVersion\"n\n" +
 	"\x19ImageFactorySchematicSpec\x12!\n" +
@@ -2445,7 +2752,35 @@ const file_resource_definitions_runtime_runtime_proto_rawDesc = "" +
 	"\alicense\x18\x03 \x01(\tR\alicense\x12\x13\n" +
 	"\x05cp_es\x18\x04 \x03(\tR\x04cpEs\x12\x15\n" +
 	"\x06pur_ls\x18\x05 \x03(\tR\x05purLs\x12\x1c\n" +
-	"\textension\x18\x06 \x01(\bR\textension\"\x89\x02\n" +
+	"\textension\x18\x06 \x01(\bR\textension\"\x9d\x02\n" +
+	"\rSELinuxAccess\x12\x16\n" +
+	"\x06target\x18\x01 \x01(\tR\x06target\x12\x14\n" +
+	"\x05class\x18\x02 \x01(\tR\x05class\x12\x1e\n" +
+	"\n" +
+	"permission\x18\x03 \x01(\tR\n" +
+	"permission\x12\x14\n" +
+	"\x05count\x18\x04 \x01(\x04R\x05count\x120\n" +
+	"\x05first\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x05first\x12.\n" +
+	"\x04last\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x04last\x12\x1e\n" +
+	"\n" +
+	"permissive\x18\a \x01(\bR\n" +
+	"permissive\x12\x12\n" +
+	"\x04comm\x18\b \x01(\tR\x04comm\x12\x12\n" +
+	"\x04path\x18\t \x01(\tR\x04path\"\xe0\x01\n" +
+	"\x14SELinuxAccessLogSpec\x12I\n" +
+	"\x06denied\x18\x01 \x03(\v21.talos.resource.definitions.runtime.SELinuxAccessR\x06denied\x12K\n" +
+	"\agranted\x18\x02 \x03(\v21.talos.resource.definitions.runtime.SELinuxAccessR\agranted\x12\x12\n" +
+	"\x04lost\x18\x03 \x01(\x04R\x04lost\x12\x1c\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"\xaf\x03\n" +
+	"\x17SELinuxDomainStatusSpec\x12O\n" +
+	"\texercised\x18\x01 \x03(\v21.talos.resource.definitions.runtime.SELinuxAccessR\texercised\x12S\n" +
+	"\vunexercised\x18\x02 \x03(\v21.talos.resource.definitions.runtime.SELinuxAccessR\vunexercised\x12A\n" +
+	"\x0eobserved_since\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\robservedSince\x12\x16\n" +
+	"\x06rounds\x18\x04 \x01(\rR\x06rounds\x12!\n" +
+	"\flost_records\x18\x05 \x01(\x04R\vlostRecords\x12\x1c\n" +
+	"\ttruncated\x18\x06 \x01(\bR\ttruncated\x12'\n" +
+	"\x0fnarrowed_module\x18\a \x01(\tR\x0enarrowedModule\x12)\n" +
+	"\x10suggested_allows\x18\b \x01(\tR\x0fsuggestedAllows\"\x89\x02\n" +
 	"\x11SELinuxModuleSpec\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\x12Y\n" +
 	"\x06labels\x18\x02 \x03(\v2A.talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntryR\x06labels\x12\x1a\n" +
@@ -2506,7 +2841,7 @@ func file_resource_definitions_runtime_runtime_proto_rawDescGZIP() []byte {
 	return file_resource_definitions_runtime_runtime_proto_rawDescData
 }
 
-var file_resource_definitions_runtime_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
+var file_resource_definitions_runtime_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_resource_definitions_runtime_runtime_proto_goTypes = []any{
 	(*APIServiceConfigSpec)(nil),             // 0: talos.resource.definitions.runtime.APIServiceConfigSpec
 	(*BootIDSpec)(nil),                       // 1: talos.resource.definitions.runtime.BootIDSpec
@@ -2536,56 +2871,67 @@ var file_resource_definitions_runtime_runtime_proto_goTypes = []any{
 	(*OOMActionSpec)(nil),                    // 25: talos.resource.definitions.runtime.OOMActionSpec
 	(*PlatformMetadataSpec)(nil),             // 26: talos.resource.definitions.runtime.PlatformMetadataSpec
 	(*SBOMItemSpec)(nil),                     // 27: talos.resource.definitions.runtime.SBOMItemSpec
-	(*SELinuxModuleSpec)(nil),                // 28: talos.resource.definitions.runtime.SELinuxModuleSpec
-	(*SELinuxPolicyStatusSpec)(nil),          // 29: talos.resource.definitions.runtime.SELinuxPolicyStatusSpec
-	(*SecurityStateSpec)(nil),                // 30: talos.resource.definitions.runtime.SecurityStateSpec
-	(*ServicePIDSpec)(nil),                   // 31: talos.resource.definitions.runtime.ServicePIDSpec
-	(*UnattendedInstallStatusSpec)(nil),      // 32: talos.resource.definitions.runtime.UnattendedInstallStatusSpec
-	(*UniqueMachineTokenSpec)(nil),           // 33: talos.resource.definitions.runtime.UniqueMachineTokenSpec
-	(*UnmetCondition)(nil),                   // 34: talos.resource.definitions.runtime.UnmetCondition
-	(*VersionSpec)(nil),                      // 35: talos.resource.definitions.runtime.VersionSpec
-	(*WatchdogTimerConfigSpec)(nil),          // 36: talos.resource.definitions.runtime.WatchdogTimerConfigSpec
-	(*WatchdogTimerStatusSpec)(nil),          // 37: talos.resource.definitions.runtime.WatchdogTimerStatusSpec
-	nil,                                      // 38: talos.resource.definitions.runtime.KmsgLogDestination.ExtraTagsEntry
-	nil,                                      // 39: talos.resource.definitions.runtime.PlatformMetadataSpec.TagsEntry
-	nil,                                      // 40: talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry
-	(enums.RuntimeKernelModuleType)(0),       // 41: talos.resource.definitions.enums.RuntimeKernelModuleType
-	(enums.RuntimeKernelModuleState)(0),      // 42: talos.resource.definitions.enums.RuntimeKernelModuleState
-	(*common.URL)(nil),                       // 43: common.URL
-	(enums.RuntimeMachineStage)(0),           // 44: talos.resource.definitions.enums.RuntimeMachineStage
-	(*common.NetIP)(nil),                     // 45: common.NetIP
-	(enums.RuntimeSELinuxState)(0),           // 46: talos.resource.definitions.enums.RuntimeSELinuxState
-	(enums.RuntimeFIPSState)(0),              // 47: talos.resource.definitions.enums.RuntimeFIPSState
-	(enums.RuntimeLockdownState)(0),          // 48: talos.resource.definitions.enums.RuntimeLockdownState
-	(enums.RuntimeUnattendedInstallPhase)(0), // 49: talos.resource.definitions.enums.RuntimeUnattendedInstallPhase
-	(*durationpb.Duration)(nil),              // 50: google.protobuf.Duration
+	(*SELinuxAccess)(nil),                    // 28: talos.resource.definitions.runtime.SELinuxAccess
+	(*SELinuxAccessLogSpec)(nil),             // 29: talos.resource.definitions.runtime.SELinuxAccessLogSpec
+	(*SELinuxDomainStatusSpec)(nil),          // 30: talos.resource.definitions.runtime.SELinuxDomainStatusSpec
+	(*SELinuxModuleSpec)(nil),                // 31: talos.resource.definitions.runtime.SELinuxModuleSpec
+	(*SELinuxPolicyStatusSpec)(nil),          // 32: talos.resource.definitions.runtime.SELinuxPolicyStatusSpec
+	(*SecurityStateSpec)(nil),                // 33: talos.resource.definitions.runtime.SecurityStateSpec
+	(*ServicePIDSpec)(nil),                   // 34: talos.resource.definitions.runtime.ServicePIDSpec
+	(*UnattendedInstallStatusSpec)(nil),      // 35: talos.resource.definitions.runtime.UnattendedInstallStatusSpec
+	(*UniqueMachineTokenSpec)(nil),           // 36: talos.resource.definitions.runtime.UniqueMachineTokenSpec
+	(*UnmetCondition)(nil),                   // 37: talos.resource.definitions.runtime.UnmetCondition
+	(*VersionSpec)(nil),                      // 38: talos.resource.definitions.runtime.VersionSpec
+	(*WatchdogTimerConfigSpec)(nil),          // 39: talos.resource.definitions.runtime.WatchdogTimerConfigSpec
+	(*WatchdogTimerStatusSpec)(nil),          // 40: talos.resource.definitions.runtime.WatchdogTimerStatusSpec
+	nil,                                      // 41: talos.resource.definitions.runtime.KmsgLogDestination.ExtraTagsEntry
+	nil,                                      // 42: talos.resource.definitions.runtime.PlatformMetadataSpec.TagsEntry
+	nil,                                      // 43: talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry
+	(enums.RuntimeKernelModuleType)(0),       // 44: talos.resource.definitions.enums.RuntimeKernelModuleType
+	(enums.RuntimeKernelModuleState)(0),      // 45: talos.resource.definitions.enums.RuntimeKernelModuleState
+	(*common.URL)(nil),                       // 46: common.URL
+	(enums.RuntimeMachineStage)(0),           // 47: talos.resource.definitions.enums.RuntimeMachineStage
+	(*common.NetIP)(nil),                     // 48: common.NetIP
+	(*timestamppb.Timestamp)(nil),            // 49: google.protobuf.Timestamp
+	(enums.RuntimeSELinuxState)(0),           // 50: talos.resource.definitions.enums.RuntimeSELinuxState
+	(enums.RuntimeFIPSState)(0),              // 51: talos.resource.definitions.enums.RuntimeFIPSState
+	(enums.RuntimeLockdownState)(0),          // 52: talos.resource.definitions.enums.RuntimeLockdownState
+	(enums.RuntimeUnattendedInstallPhase)(0), // 53: talos.resource.definitions.enums.RuntimeUnattendedInstallPhase
+	(*durationpb.Duration)(nil),              // 54: google.protobuf.Duration
 }
 var file_resource_definitions_runtime_runtime_proto_depIdxs = []int32{
 	7,  // 0: talos.resource.definitions.runtime.ExtensionServiceConfigSpec.files:type_name -> talos.resource.definitions.runtime.ExtensionServiceConfigFile
-	41, // 1: talos.resource.definitions.runtime.KernelModuleStatusSpec.type:type_name -> talos.resource.definitions.enums.RuntimeKernelModuleType
-	42, // 2: talos.resource.definitions.runtime.KernelModuleStatusSpec.state:type_name -> talos.resource.definitions.enums.RuntimeKernelModuleState
-	43, // 3: talos.resource.definitions.runtime.KmsgLogConfigSpec.destinations:type_name -> common.URL
+	44, // 1: talos.resource.definitions.runtime.KernelModuleStatusSpec.type:type_name -> talos.resource.definitions.enums.RuntimeKernelModuleType
+	45, // 2: talos.resource.definitions.runtime.KernelModuleStatusSpec.state:type_name -> talos.resource.definitions.enums.RuntimeKernelModuleState
+	46, // 3: talos.resource.definitions.runtime.KmsgLogConfigSpec.destinations:type_name -> common.URL
 	17, // 4: talos.resource.definitions.runtime.KmsgLogConfigSpec.tagged_destinations:type_name -> talos.resource.definitions.runtime.KmsgLogDestination
-	43, // 5: talos.resource.definitions.runtime.KmsgLogDestination.endpoint:type_name -> common.URL
-	38, // 6: talos.resource.definitions.runtime.KmsgLogDestination.extra_tags:type_name -> talos.resource.definitions.runtime.KmsgLogDestination.ExtraTagsEntry
-	44, // 7: talos.resource.definitions.runtime.MachineStatusSpec.stage:type_name -> talos.resource.definitions.enums.RuntimeMachineStage
+	46, // 5: talos.resource.definitions.runtime.KmsgLogDestination.endpoint:type_name -> common.URL
+	41, // 6: talos.resource.definitions.runtime.KmsgLogDestination.extra_tags:type_name -> talos.resource.definitions.runtime.KmsgLogDestination.ExtraTagsEntry
+	47, // 7: talos.resource.definitions.runtime.MachineStatusSpec.stage:type_name -> talos.resource.definitions.enums.RuntimeMachineStage
 	20, // 8: talos.resource.definitions.runtime.MachineStatusSpec.status:type_name -> talos.resource.definitions.runtime.MachineStatusStatus
-	34, // 9: talos.resource.definitions.runtime.MachineStatusStatus.unmet_conditions:type_name -> talos.resource.definitions.runtime.UnmetCondition
-	45, // 10: talos.resource.definitions.runtime.MaintenanceServiceConfigSpec.reachable_addresses:type_name -> common.NetIP
-	39, // 11: talos.resource.definitions.runtime.PlatformMetadataSpec.tags:type_name -> talos.resource.definitions.runtime.PlatformMetadataSpec.TagsEntry
-	40, // 12: talos.resource.definitions.runtime.SELinuxModuleSpec.labels:type_name -> talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry
-	46, // 13: talos.resource.definitions.runtime.SecurityStateSpec.se_linux_state:type_name -> talos.resource.definitions.enums.RuntimeSELinuxState
-	47, // 14: talos.resource.definitions.runtime.SecurityStateSpec.fips_state:type_name -> talos.resource.definitions.enums.RuntimeFIPSState
-	48, // 15: talos.resource.definitions.runtime.SecurityStateSpec.lockdown_state:type_name -> talos.resource.definitions.enums.RuntimeLockdownState
-	49, // 16: talos.resource.definitions.runtime.UnattendedInstallStatusSpec.phase:type_name -> talos.resource.definitions.enums.RuntimeUnattendedInstallPhase
-	50, // 17: talos.resource.definitions.runtime.WatchdogTimerConfigSpec.timeout:type_name -> google.protobuf.Duration
-	50, // 18: talos.resource.definitions.runtime.WatchdogTimerStatusSpec.timeout:type_name -> google.protobuf.Duration
-	50, // 19: talos.resource.definitions.runtime.WatchdogTimerStatusSpec.feed_interval:type_name -> google.protobuf.Duration
-	20, // [20:20] is the sub-list for method output_type
-	20, // [20:20] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	37, // 9: talos.resource.definitions.runtime.MachineStatusStatus.unmet_conditions:type_name -> talos.resource.definitions.runtime.UnmetCondition
+	48, // 10: talos.resource.definitions.runtime.MaintenanceServiceConfigSpec.reachable_addresses:type_name -> common.NetIP
+	42, // 11: talos.resource.definitions.runtime.PlatformMetadataSpec.tags:type_name -> talos.resource.definitions.runtime.PlatformMetadataSpec.TagsEntry
+	49, // 12: talos.resource.definitions.runtime.SELinuxAccess.first:type_name -> google.protobuf.Timestamp
+	49, // 13: talos.resource.definitions.runtime.SELinuxAccess.last:type_name -> google.protobuf.Timestamp
+	28, // 14: talos.resource.definitions.runtime.SELinuxAccessLogSpec.denied:type_name -> talos.resource.definitions.runtime.SELinuxAccess
+	28, // 15: talos.resource.definitions.runtime.SELinuxAccessLogSpec.granted:type_name -> talos.resource.definitions.runtime.SELinuxAccess
+	28, // 16: talos.resource.definitions.runtime.SELinuxDomainStatusSpec.exercised:type_name -> talos.resource.definitions.runtime.SELinuxAccess
+	28, // 17: talos.resource.definitions.runtime.SELinuxDomainStatusSpec.unexercised:type_name -> talos.resource.definitions.runtime.SELinuxAccess
+	49, // 18: talos.resource.definitions.runtime.SELinuxDomainStatusSpec.observed_since:type_name -> google.protobuf.Timestamp
+	43, // 19: talos.resource.definitions.runtime.SELinuxModuleSpec.labels:type_name -> talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry
+	50, // 20: talos.resource.definitions.runtime.SecurityStateSpec.se_linux_state:type_name -> talos.resource.definitions.enums.RuntimeSELinuxState
+	51, // 21: talos.resource.definitions.runtime.SecurityStateSpec.fips_state:type_name -> talos.resource.definitions.enums.RuntimeFIPSState
+	52, // 22: talos.resource.definitions.runtime.SecurityStateSpec.lockdown_state:type_name -> talos.resource.definitions.enums.RuntimeLockdownState
+	53, // 23: talos.resource.definitions.runtime.UnattendedInstallStatusSpec.phase:type_name -> talos.resource.definitions.enums.RuntimeUnattendedInstallPhase
+	54, // 24: talos.resource.definitions.runtime.WatchdogTimerConfigSpec.timeout:type_name -> google.protobuf.Duration
+	54, // 25: talos.resource.definitions.runtime.WatchdogTimerStatusSpec.timeout:type_name -> google.protobuf.Duration
+	54, // 26: talos.resource.definitions.runtime.WatchdogTimerStatusSpec.feed_interval:type_name -> google.protobuf.Duration
+	27, // [27:27] is the sub-list for method output_type
+	27, // [27:27] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_resource_definitions_runtime_runtime_proto_init() }
@@ -2599,7 +2945,7 @@ func file_resource_definitions_runtime_runtime_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_resource_definitions_runtime_runtime_proto_rawDesc), len(file_resource_definitions_runtime_runtime_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   41,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -7,6 +7,7 @@ option java_package = "dev.talos.api.resource.definitions.runtime";
 
 import "common/common.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 import "resource/definitions/enums/enums.proto";
 
 // APIServiceConfigSpec describes configuration for Talos API service (apid).
@@ -63,6 +64,8 @@ message ExtensionServiceConfigSpec {
   repeated string environment = 2;
   // SELinuxType is the type the service runs as, empty to let Talos choose it.
   string se_linux_type = 3;
+  // SELinuxAudit reports whether the permissions the service exercises are audited.
+  bool se_linux_audit = 4;
 }
 
 // ExtensionServiceConfigStatusSpec describes status of rendered extensions service config files.
@@ -211,6 +214,56 @@ message SBOMItemSpec {
   repeated string cp_es = 4;
   repeated string pur_ls = 5;
   bool extension = 6;
+}
+
+// SELinuxAccess is a permission on a class of objects of a type, with the observations of its use.
+message SELinuxAccess {
+  string target = 1;
+  string class = 2;
+  string permission = 3;
+  // Count of the records, none for a permission never observed.
+  uint64 count = 4;
+  google.protobuf.Timestamp first = 5;
+  google.protobuf.Timestamp last = 6;
+  // Permissive reports a denial the kernel did not apply.
+  bool permissive = 7;
+  // Comm and Path of the last record.
+  string comm = 8;
+  string path = 9;
+}
+
+// SELinuxAccessLogSpec describes the SELinuxAccessLog resource.
+message SELinuxAccessLogSpec {
+  // Denied are the accesses the kernel refused, or would have refused in permissive mode.
+  repeated SELinuxAccess denied = 1;
+  // Granted are the accesses auditallow rules recorded.
+  repeated SELinuxAccess granted = 2;
+  // Lost is the count of records the kernel dropped since boot, at the last update.
+  uint64 lost = 3;
+  // Truncated reports that the log reached its size and dropped new accesses.
+  bool truncated = 4;
+}
+
+// SELinuxDomainStatusSpec describes the SELinuxDomainStatus resource.
+message SELinuxDomainStatusSpec {
+  // Exercised are the granted accesses observed since ObservedSince.
+  repeated SELinuxAccess exercised = 1;
+  // Unexercised are the granted accesses not observed since ObservedSince.
+  repeated SELinuxAccess unexercised = 2;
+  // ObservedSince is the start of the audit.
+  google.protobuf.Timestamp observed_since = 3;
+  // Rounds counts the reloads of the audit module since ObservedSince.
+  uint32 rounds = 4;
+  // LostRecords counts the audit records the kernel dropped since ObservedSince: an exercised access may have been missed.
+  uint64 lost_records = 5;
+  // Truncated reports that a list reached its size.
+  bool truncated = 6;
+  // NarrowedModule is a policy module granting the domain the exercised accesses only; it names the types of the loaded
+  // policy, modules included, and compiles as long as they do. The module derived for an extension service declares its
+  // type already: rename the type before loading the module, and select it with selinux.type.
+  string narrowed_module = 7;
+  // SuggestedAllows are the accesses the domain was denied since ObservedSince, as allow rules to sort out.
+  string suggested_allows = 8;
 }
 
 // SELinuxModuleSpec describes the SELinuxModule resource.

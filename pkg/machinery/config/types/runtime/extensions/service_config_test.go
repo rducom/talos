@@ -79,7 +79,7 @@ func TestExtensionServiceConfigValidate(t *testing.T) {
 		selinux *extensions.ServiceSELinux
 		wantErr string
 	}{
-		{"selinux settings alone are a valid document", &extensions.ServiceSELinux{SELinuxType: "ext_t"}, ""},
+		{"selinux settings alone are a valid document", &extensions.ServiceSELinux{SELinuxAudit: true}, ""},
 		{"a type name is checked", &extensions.ServiceSELinux{SELinuxType: "ext-privileged"}, `invalid selinux type "ext-privileged" for extension "foo"`},
 		{"an empty document is refused", nil, `no config files, environment or selinux settings found for extension "foo"`},
 	} {
