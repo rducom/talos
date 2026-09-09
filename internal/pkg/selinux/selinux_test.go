@@ -43,6 +43,18 @@ func TestCompile(t *testing.T) {
 			"neverallow check failed",
 		},
 		{
+			"a type on the pod plumbing is run by the CRI and reaches nothing pod_p grants",
+			"(type pod_narrow_t)\n(call pod_plumbing (pod_narrow_t))\n" +
+				"(neverallow pod_narrow_t ephemeral_t (file (write)))\n(neverallow pod_narrow_t kube_secret_f (file (read)))\n",
+			"",
+		},
+		{
+			"the CRI transitions to a type on the pod plumbing, which runs from pod_file_t",
+			"(type pod_narrow_t)\n(call pod_plumbing (pod_narrow_t))\n" +
+				"(neverallow pod_containerd_t pod_narrow_t (process (transition)))\n(neverallow pod_narrow_t pod_file_t (file (entrypoint)))\n",
+			"neverallow check failed",
+		},
+		{
 			"an unknown type is reported with the module and the line",
 			"(allow pod_t nonexistent_t (file (read)))\n",
 			"module.cil:1",
