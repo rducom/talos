@@ -10,6 +10,8 @@
 (allow ext_agent_t ext_agent_run_t (fs_classes (rw))) ; /run/agent
 (allow ext_agent_t ext_agent_state_t (fs_classes (rw))) ; /var/lib/agent
 (allow ext_agent_t sysfs_t (fs_classes (rw))) ; container.security.writeableSysfs
+; a pod domain reaching the service: (allow <pod_type> ext_agent_state_t (fs_classes (rw))) (allow <pod_type> ext_agent_t (unix_stream_socket (connectto)))
+; a pod domain reaching the service: (allow <pod_type> ext_agent_run_t (fs_classes (rw))) (allow <pod_type> ext_agent_t (unix_stream_socket (connectto)))
 ;; label /run/agent ext_agent_run_t
 ;; label /var/lib/agent ext_agent_state_t
 
@@ -47,4 +49,6 @@
 (allow ext_writeable_rootfs_t ext_rootfs_t (fs_classes (rw))) ; container.security.writeableRootfs
 (allow ext_writeable_rootfs_t udev_run_t (fs_classes (ro))) ; /run/udev
 (allow ext_writeable_rootfs_t var_lock_t (fs_classes (rw))) ; /run/lock/daemon
+; /run/lock/daemon is under /run/lock (var_lock_t): the service shares that type, it is not a state directory of its own
+;; warnings: /run/lock/daemon is under /run/lock (var_lock_t): the service shares that type, it is not a state directory of its own
 

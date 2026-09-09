@@ -60,8 +60,11 @@ documents, at boot and whenever the machine config changes; `talosctl get selinu
 selinuxpolicystatus` reports the set loaded and a rejected one. The imager derives and compiles the same modules, and
 refuses an image whose extension service could not be confined. A service whose module is not loaded runs as `ext_t`;
 `selinux.type` in `ExtensionServiceConfig` selects another type, `ext_privileged_t` or one declared by a
-`SELinuxPolicyConfig` document with the `ext_domain` macro. The state directories keep the types derived from the spec
-whatever the type: `ext_t` and `ext_privileged_t` reach the state of every service, a derived or a declared type its own.
+`SELinuxPolicyConfig` document with the `ext_domain` macro; a service waits for a type no module declares yet. The state
+directories keep the types derived from the spec whatever the type: `ext_t` and `ext_privileged_t` reach the state of
+every service, a derived or a declared type its own. A pod reaching the state of a service through a hostPath needs a
+module granting its domain the state type and `connectto` on the domain of the service; the derived module says how. The
+files a pod creates there carry no MCS category, so that the service and other pods read them.
 """
 
     [notes.kubespan_peer_endpoint_filters]

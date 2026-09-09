@@ -131,20 +131,30 @@ func mountType(source string) (prefix, typ string) {
 	return prefix, typ
 }
 
+// stateRoot returns the state root a source is strictly under, if any.
+func stateRoot(source string) string {
+	for root := range stateRoots {
+		if strings.HasPrefix(source, root+"/") {
+			return root
+		}
+	}
+
+	return ""
+}
+
 // StateKind classifies a mount source: a path strictly under one of the state roots is a state directory of the
 // service, unless Talos labels it or one of its parents with a type of its own.
 func StateKind(source string) Kind {
 	source = Normalize(source)
 
-	for root, kind := range stateRoots {
-		if strings.HasPrefix(source, root+"/") {
-			if prefix, _ := mountType(source); len(prefix) > len(root) {
-				return KindOther
-			}
-
-			return kind
-		}
+	root := stateRoot(source)
+	if root == "" {
+		return KindOther
 	}
 
-	return KindOther
+	if prefix, _ := mountType(source); len(prefix) > len(root) {
+		return KindOther
+	}
+
+	return stateRoots[root]
 }

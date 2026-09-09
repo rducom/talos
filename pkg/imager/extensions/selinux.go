@@ -72,6 +72,8 @@ func (builder *Builder) checkSELinux(ctx context.Context, extensionsList []*exte
 			return fmt.Errorf("SELinux policy of extension %q: %s", extension[module.Name], module.Error)
 		}
 
+		builder.Printf("SELinux policy of extension %q, service %q: derived %s", extension[module.Name], module.Name, module.Type)
+
 		for _, warning := range module.Warnings {
 			builder.Printf("SELinux policy of extension %q, service %q: %s", extension[module.Name], module.Name, warning)
 		}

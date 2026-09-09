@@ -185,10 +185,15 @@ func generate(spec extservices.Spec, rules []fcontext.Rule, sharers func(string)
 				typ = deviceType(source)
 			}
 		default:
-			if _, typ = mountType(source); typ == "" {
+			var prefix string
+
+			if prefix, typ = mountType(source); typ == "" {
 				typ = fileContextType(rules, source)
 			} else if subs := covered(source); len(subs) > 0 {
 				module.Warnings = append(module.Warnings, source+" covers "+strings.Join(subs, ", ")+": not granted")
+			} else if prefix != source && stateRoot(source) != "" {
+				// a directory of the service under one Talos labels keeps the type of its parent, which the service shares
+				module.Warnings = append(module.Warnings, fmt.Sprintf("%s is under %s (%s): the service shares that type, it is not a state directory of its own", source, prefix, typ))
 			}
 		}
 
@@ -233,6 +238,15 @@ func generate(spec extservices.Spec, rules []fcontext.Rule, sharers func(string)
 
 	for _, warning := range module.Warnings {
 		module.Content += "; " + warning + "\n"
+	}
+
+	// a pod reaching the service through its state, the way a CSI driver talks to a storage daemon, needs the state
+	// types and the socket of the service, which pod_domain does not grant
+	for _, kind := range []Kind{KindState, KindRun} {
+		if states[kind] {
+			module.Content += fmt.Sprintf("; a pod domain reaching the service: (allow <pod_type> %s (fs_classes (rw))) (allow <pod_type> %s (unix_stream_socket (connectto)))\n",
+				StateTypeName(spec.Name, kind), module.Type)
+		}
 	}
 
 	return module, nil
