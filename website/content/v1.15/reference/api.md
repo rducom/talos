@@ -9923,7 +9923,7 @@ SELinuxAccessLogSpec describes the SELinuxAccessLog resource.
 | ----- | ---- | ----- | ----------- |
 | denied | [SELinuxAccess](#talos.resource.definitions.runtime.SELinuxAccess) | repeated | Denied are the accesses the kernel refused, or would have refused in permissive mode. |
 | granted | [SELinuxAccess](#talos.resource.definitions.runtime.SELinuxAccess) | repeated | Granted are the accesses auditallow rules recorded. |
-| lost | [uint64](#uint64) |  | Lost is the count of records the kernel dropped since boot, at the last update. |
+| lost | [uint64](#uint64) |  | Lost is the count of records the kernel dropped since boot, whatever their domain, at the last update. |
 | truncated | [bool](#bool) |  | Truncated reports that the log reached its size and dropped new accesses. |
 
 
@@ -9940,11 +9940,11 @@ SELinuxDomainStatusSpec describes the SELinuxDomainStatus resource.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | exercised | [SELinuxAccess](#talos.resource.definitions.runtime.SELinuxAccess) | repeated | Exercised are the granted accesses observed since ObservedSince. |
-| unexercised | [SELinuxAccess](#talos.resource.definitions.runtime.SELinuxAccess) | repeated | Unexercised are the granted accesses not observed since ObservedSince. |
+| unexercised | [SELinuxAccess](#talos.resource.definitions.runtime.SELinuxAccess) | repeated | Unexercised are the granted accesses not observed since ObservedSince, cut at the size of the list: the audit module of the domain, audit-<type>, carries the whole set as auditallow rules. |
 | observed_since | [google.protobuf.Timestamp](#google.protobuf.Timestamp) |  | ObservedSince is the start of the audit. |
 | rounds | [uint32](#uint32) |  | Rounds counts the reloads of the audit module since ObservedSince. |
-| lost_records | [uint64](#uint64) |  | LostRecords counts the audit records the kernel dropped since ObservedSince: an exercised access may have been missed. |
-| truncated | [bool](#bool) |  | Truncated reports that a list reached its size. |
+| lost_records | [uint64](#uint64) |  | LostRecords counts the audit records the kernel dropped since ObservedSince, whatever their domain: an exercised access of this domain may have been among them. |
+| truncated | [bool](#bool) |  | Truncated reports that a list of this status reached its size, or that the audit log dropped accesses of the domain. |
 | narrowed_module | [string](#string) |  | NarrowedModule is a policy module granting the domain the exercised accesses only; it names the types of the loaded policy, modules included, and compiles as long as they do. The module derived for an extension service declares its type already: rename the type before loading the module, and select it with selinux.type. |
 | suggested_allows | [string](#string) |  | SuggestedAllows are the accesses the domain was denied since ObservedSince, as allow rules to sort out. |
 

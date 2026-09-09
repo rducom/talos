@@ -1943,9 +1943,9 @@
         "audit": {
           "type": "boolean",
           "title": "audit",
-          "description": "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.\n",
-          "markdownDescription": "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.",
-          "x-intellij-html-description": "\u003cp\u003eObserve the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.\u003c/p\u003e\n"
+          "description": "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.\nThe service restarts when the flag is set, so that the accesses of its start are observed.\n",
+          "markdownDescription": "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.\nThe service restarts when the flag is set, so that the accesses of its start are observed.",
+          "x-intellij-html-description": "\u003cp\u003eObserve the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.\nThe service restarts when the flag is set, so that the accesses of its start are observed.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -7034,9 +7034,9 @@
         "audit": {
           "type": "boolean",
           "title": "audit",
-          "description": "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones.\n",
-          "markdownDescription": "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones.",
-          "x-intellij-html-description": "\u003cp\u003eObserve the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones.\u003c/p\u003e\n"
+          "description": "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones. Restart the workload once the flag is set: the accesses of its start are observed only then,\nand the narrowed module says so while they are missing.\n",
+          "markdownDescription": "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones. Restart the workload once the flag is set: the accesses of its start are observed only then,\nand the narrowed module says so while they are missing.",
+          "x-intellij-html-description": "\u003cp\u003eObserve the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones. Restart the workload once the flag is set: the accesses of its start are observed only then,\nand the narrowed module says so while they are missing.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,

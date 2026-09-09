@@ -83,6 +83,7 @@ type ServiceSELinux struct {
 	//   description: |
 	//     Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the
 	//     policy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.
+	//     The service restarts when the flag is set, so that the accesses of its start are observed.
 	SELinuxAudit bool `yaml:"audit,omitempty"`
 }
 

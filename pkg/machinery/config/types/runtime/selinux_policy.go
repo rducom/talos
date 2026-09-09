@@ -76,7 +76,8 @@ type SELinuxPolicyConfigV1Alpha1 struct {
 	//   description: |
 	//     Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the
 	//     accesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the
-	//     exercised ones.
+	//     exercised ones. Restart the workload once the flag is set: the accesses of its start are observed only then,
+	//     and the narrowed module says so while they are missing.
 	PolicyAudit bool `yaml:"audit,omitempty"`
 }
 

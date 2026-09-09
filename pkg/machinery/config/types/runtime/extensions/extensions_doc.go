@@ -79,7 +79,7 @@ func (ServiceSELinux) Doc() *encoder.Doc {
 				Name:        "audit",
 				Type:        "bool",
 				Note:        "",
-				Description: "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.",
+				Description: "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.\nThe service restarts when the flag is set, so that the accesses of its start are observed.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the" /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 		},

@@ -31,7 +31,7 @@ type SELinuxAccessLogSpec struct {
 	Denied []SELinuxAccess `yaml:"denied,omitempty" protobuf:"1"`
 	// Granted are the accesses auditallow rules recorded.
 	Granted []SELinuxAccess `yaml:"granted,omitempty" protobuf:"2"`
-	// Lost is the count of records the kernel dropped since boot, at the last update.
+	// Lost is the count of records the kernel dropped since boot, whatever their domain, at the last update.
 	Lost uint64 `yaml:"lost,omitempty" protobuf:"3"`
 	// Truncated reports that the log reached its size and dropped new accesses.
 	Truncated bool `yaml:"truncated,omitempty" protobuf:"4"`

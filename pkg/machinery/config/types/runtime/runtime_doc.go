@@ -532,7 +532,7 @@ func (SELinuxPolicyConfigV1Alpha1) Doc() *encoder.Doc {
 				Name:        "audit",
 				Type:        "bool",
 				Note:        "",
-				Description: "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones.",
+				Description: "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones. Restart the workload once the flag is set: the accesses of its start are observed only then,\nand the narrowed module says so while they are missing.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the" /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 		},

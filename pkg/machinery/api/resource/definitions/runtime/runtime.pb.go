@@ -1823,7 +1823,7 @@ type SELinuxAccessLogSpec struct {
 	Denied []*SELinuxAccess `protobuf:"bytes,1,rep,name=denied,proto3" json:"denied,omitempty"`
 	// Granted are the accesses auditallow rules recorded.
 	Granted []*SELinuxAccess `protobuf:"bytes,2,rep,name=granted,proto3" json:"granted,omitempty"`
-	// Lost is the count of records the kernel dropped since boot, at the last update.
+	// Lost is the count of records the kernel dropped since boot, whatever their domain, at the last update.
 	Lost uint64 `protobuf:"varint,3,opt,name=lost,proto3" json:"lost,omitempty"`
 	// Truncated reports that the log reached its size and dropped new accesses.
 	Truncated     bool `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
@@ -1894,15 +1894,17 @@ type SELinuxDomainStatusSpec struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Exercised are the granted accesses observed since ObservedSince.
 	Exercised []*SELinuxAccess `protobuf:"bytes,1,rep,name=exercised,proto3" json:"exercised,omitempty"`
-	// Unexercised are the granted accesses not observed since ObservedSince.
+	// Unexercised are the granted accesses not observed since ObservedSince, cut at the size of the list: the audit module
+	// of the domain, audit-<type>, carries the whole set as auditallow rules.
 	Unexercised []*SELinuxAccess `protobuf:"bytes,2,rep,name=unexercised,proto3" json:"unexercised,omitempty"`
 	// ObservedSince is the start of the audit.
 	ObservedSince *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=observed_since,json=observedSince,proto3" json:"observed_since,omitempty"`
 	// Rounds counts the reloads of the audit module since ObservedSince.
 	Rounds uint32 `protobuf:"varint,4,opt,name=rounds,proto3" json:"rounds,omitempty"`
-	// LostRecords counts the audit records the kernel dropped since ObservedSince: an exercised access may have been missed.
+	// LostRecords counts the audit records the kernel dropped since ObservedSince, whatever their domain: an exercised
+	// access of this domain may have been among them.
 	LostRecords uint64 `protobuf:"varint,5,opt,name=lost_records,json=lostRecords,proto3" json:"lost_records,omitempty"`
-	// Truncated reports that a list reached its size.
+	// Truncated reports that a list of this status reached its size, or that the audit log dropped accesses of the domain.
 	Truncated bool `protobuf:"varint,6,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	// NarrowedModule is a policy module granting the domain the exercised accesses only; it names the types of the loaded
 	// policy, modules included, and compiles as long as they do. The module derived for an extension service declares its

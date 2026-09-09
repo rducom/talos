@@ -28,15 +28,17 @@ type SELinuxDomainStatus = typed.Resource[SELinuxDomainStatusSpec, SELinuxDomain
 type SELinuxDomainStatusSpec struct {
 	// Exercised are the granted accesses observed since ObservedSince.
 	Exercised []SELinuxAccess `yaml:"exercised,omitempty" protobuf:"1"`
-	// Unexercised are the granted accesses not observed since ObservedSince.
+	// Unexercised are the granted accesses not observed since ObservedSince, cut at the size of the list: the audit module
+	// of the domain, audit-<type>, carries the whole set as auditallow rules.
 	Unexercised []SELinuxAccess `yaml:"unexercised,omitempty" protobuf:"2"`
 	// ObservedSince is the start of the audit.
 	ObservedSince time.Time `yaml:"observedSince" protobuf:"3"`
 	// Rounds counts the reloads of the audit module since ObservedSince.
 	Rounds uint32 `yaml:"rounds" protobuf:"4"`
-	// LostRecords counts the audit records the kernel dropped since ObservedSince: an exercised access may have been missed.
+	// LostRecords counts the audit records the kernel dropped since ObservedSince, whatever their domain: an exercised
+	// access of this domain may have been among them.
 	LostRecords uint64 `yaml:"lostRecords,omitempty" protobuf:"5"`
-	// Truncated reports that a list reached its size.
+	// Truncated reports that a list of this status reached its size, or that the audit log dropped accesses of the domain.
 	Truncated bool `yaml:"truncated,omitempty" protobuf:"6"`
 	// NarrowedModule is a policy module granting the domain the exercised accesses only; it names the types of the loaded
 	// policy, modules included, and compiles as long as they do. The module derived for an extension service declares its
