@@ -51,6 +51,9 @@
 ; iptables used by CNI
 (allow pod_containerd_t bin_exec_t (file (execute_no_trans execute)))
 (allow pod_containerd_t bin_exec_t (fs_classes (ro)))
+; runtime handler shims installed by extensions under /usr/local/bin
+(allow pod_containerd_t usr_t (file (execute_no_trans execute)))
+(allow pod_containerd_t usr_t (fs_classes (ro)))
 ; /etc/cni is a context=cni_conf_t writable tmpfs; the CRI containerd manages the CNI config
 ; tree there (e.g. creating net.d), so pod_containerd_t needs rw on cni_conf_t. Without it,
 ; under enforcing the CRI plugin's CNI init fails (avc: denied write pod_containerd_t->cni_conf_t

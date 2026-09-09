@@ -1,0 +1,51 @@
+# The main probe: state, run, device, /etc and machined socket mounts, a writable sysfs, a rootfs with /etc and
+# dynamic binaries. No mount above a directory Talos labels, so the derived module has no warning.
+name: selinux-probe
+depends:
+  # the state directories are on EPHEMERAL, mounted after containerd starts: without a dependency the service fails
+  # at its first start on "mkdir /var/lib: read-only file system", as any spec with /var mounts and no depends would
+  - service: cri
+container:
+  entrypoint: /usr/local/bin/selinux-probe
+  environment:
+    - PROBE_ROLE=main
+  security:
+    writeableSysfs: true
+  mounts:
+    - source: /var/lib/selinux-probe
+      destination: /var/lib/selinux-probe
+      type: bind
+      options:
+        - bind
+        - rw
+    - source: /run/selinux-probe
+      destination: /run/selinux-probe
+      type: bind
+      options:
+        - bind
+        - rw
+    - source: /dev/net/tun
+      destination: /dev/net/tun
+      type: bind
+      options:
+        - bind
+        - rw
+    - source: /etc/ssl/certs
+      destination: /etc/ssl/certs
+      type: bind
+      options:
+        - bind
+        - ro
+    - source: /etc/os-release
+      destination: /etc/os-release
+      type: bind
+      options:
+        - bind
+        - ro
+    - source: /system/run/machined/machine.sock
+      destination: /system/run/machined/machine.sock
+      type: bind
+      options:
+        - bind
+        - rw
+restart: always

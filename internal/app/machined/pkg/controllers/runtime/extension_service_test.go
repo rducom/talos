@@ -146,7 +146,7 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 	suite.AssertWithin(10*time.Second, 100*time.Millisecond, func() error {
 		ids := svcMock.getIDs()
 
-		if !slices.Equal(ids, []string{"ext-frr", "ext-hello-world"}) {
+		if !slices.Equal(ids, []string{"ext-frr", "ext-hello-world", "ext-waiting"}) {
 			return retry.ExpectedErrorf("services registered: %q", ids)
 		}
 
@@ -171,6 +171,9 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 			"ext-frr": {
 				started: 1,
 			},
+			"ext-waiting": {
+				started: 1,
+			},
 		},
 		svcMock.getTimesStartedStopped(),
 	)
@@ -191,16 +194,24 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 		})
 	}
 
-	// specVersion is 1, and ext-hello-world is already started, so it should not be restarted
+	// ext-hello-world does not wait for its config: the first version restarts it, so that it picks the config up
 	assertTimesStartedStopped(map[string]serviceStartStopInfo{
 		"ext-hello-world": {
-			started: 1,
-			stopped: 0,
+			started: 2,
+			stopped: 1,
 		},
 		"ext-frr": {
 			started: 1,
 		},
+		"ext-waiting": {
+			started: 1,
+		},
 	})
+
+	// ext-waiting waits for its config: it starts on its own when the first version appears
+	waitingConfig := runtime.NewExtensionServiceConfigStatusSpec(runtime.NamespaceName, "waiting")
+	waitingConfig.TypedSpec().SpecVersion = "1"
+	suite.Create(waitingConfig)
 
 	unexpectedConfig := runtime.NewExtensionServiceConfigStatusSpec(runtime.NamespaceName, "unexpected")
 	unexpectedConfig.TypedSpec().SpecVersion = "1"
@@ -208,10 +219,13 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 
 	assertTimesStartedStopped(map[string]serviceStartStopInfo{
 		"ext-hello-world": {
-			started: 1,
-			stopped: 0,
+			started: 2,
+			stopped: 1,
 		},
 		"ext-frr": {
+			started: 1,
+		},
+		"ext-waiting": {
 			started: 1,
 		},
 	})
@@ -225,10 +239,13 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 
 	assertTimesStartedStopped(map[string]serviceStartStopInfo{
 		"ext-hello-world": {
-			started: 2,
-			stopped: 1,
+			started: 3,
+			stopped: 2,
 		},
 		"ext-frr": {
+			started: 1,
+		},
+		"ext-waiting": {
 			started: 1,
 		},
 	})
@@ -238,10 +255,13 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 
 	assertTimesStartedStopped(map[string]serviceStartStopInfo{
 		"ext-hello-world": {
-			started: 3,
-			stopped: 2,
+			started: 4,
+			stopped: 3,
 		},
 		"ext-frr": {
+			started: 1,
+		},
+		"ext-waiting": {
 			started: 1,
 		},
 	})

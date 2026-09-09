@@ -281,21 +281,22 @@ func (svcrunner *ServiceRunner) Run(notifyChannels ...chan<- struct{}) error {
 		return fmt.Errorf("failed to run pre stage: %w", err)
 	}
 
-	svcrunner.UpdateState(ctx, events.StatePreparing, "Creating service runner")
-
-	runnr, err := svcrunner.service.Runner(svcrunner.runtime)
-	if err != nil {
-		return fmt.Errorf("failed to create runner: %w", err)
-	}
-
+	// PostFunc undoes what PreFunc set up, whether or not a runner could be created;
+	// it receives the state so that it can take actions that depend on the outcome of the run
 	defer func() {
-		// PostFunc passes in the state so that we can take actions that depend on the outcome of the run
 		state := svcrunner.GetState()
 
 		if err := svcrunner.service.PostFunc(svcrunner.runtime, state); err != nil {
 			svcrunner.UpdateState(ctx, events.StateFailed, "Failed to run post stage: %v", err)
 		}
 	}()
+
+	svcrunner.UpdateState(ctx, events.StatePreparing, "Creating service runner")
+
+	runnr, err := svcrunner.service.Runner(svcrunner.runtime)
+	if err != nil {
+		return fmt.Errorf("failed to create runner: %w", err)
+	}
 
 	if runnr == nil {
 		return ErrSkip

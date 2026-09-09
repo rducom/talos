@@ -449,8 +449,10 @@ func (suite *ServiceRunnerSuite) TestPreStageFail() {
 }
 
 func (suite *ServiceRunnerSuite) TestRunnerStageFail() {
+	// the post stage undoes the pre stage even when no runner could be created
 	svc := &MockService{
 		runnerError: errors.New("runner failed"),
+		postError:   errors.New("post failed"),
 	}
 	sr := system.NewServiceRunner(system.Services(newRuntime(suite.T())), svc, newRuntime(suite.T()))
 	err := sr.Run()
@@ -459,6 +461,7 @@ func (suite *ServiceRunnerSuite) TestRunnerStageFail() {
 		events.StateStarting,
 		events.StatePreparing,
 		events.StatePreparing,
+		events.StateFailed,
 	}, sr)
 	suite.Assert().EqualError(err, "failed to create runner: runner failed")
 }

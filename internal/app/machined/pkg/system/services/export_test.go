@@ -12,7 +12,9 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/siderolabs/gen/xslices"
 
+	"github.com/siderolabs/talos/internal/app/machined/pkg/runtime"
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/runner"
+	"github.com/siderolabs/talos/pkg/machinery/config/config"
 	runtimeres "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 )
 
@@ -53,4 +55,25 @@ func (svc *Extension) ApplyExtensionServiceConfig(
 	envVars []string,
 ) ([]specs.Mount, []string, error) {
 	return svc.applyExtensionServiceConfig(spec, mounts, envVars)
+}
+
+// Relabelable exposes relabelable for tests.
+var Relabelable = relabelable
+
+// DerivedType exposes derivedType for tests.
+func (svc *Extension) DerivedType(ctx context.Context, st state.State) (string, map[string]string, string) {
+	return svc.derivedType(ctx, st)
+}
+
+// ConfinedType exposes confinedType for tests.
+var ConfinedType = confinedType
+
+// SELinuxModules exposes selinuxModules for tests.
+func (svc *Extension) SELinuxModules(cfg config.Config) []string {
+	return svc.selinuxModules(cfg)
+}
+
+// SELinuxCondition exposes selinuxCondition for tests.
+func (svc *Extension) SELinuxCondition(r runtime.Runtime) *runtimeres.SELinuxPolicyCondition {
+	return svc.selinuxCondition(r)
 }

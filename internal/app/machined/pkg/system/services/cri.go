@@ -124,13 +124,20 @@ func (c *CRI) Condition(r runtime.Runtime) conditions.Condition {
 
 	// pods select the types of the policy modules, so the modules are loaded (or rejected) before the CRI serves them
 	if cfg != nil && selinux.IsEnabled() {
-		modules := xslices.Map(cfg.SELinuxPolicyConfigs(), func(module config.SELinuxPolicyConfig) string { return module.Name() })
-		slices.Sort(modules)
-
-		cond = append(cond, runtimeres.NewSELinuxPolicyCondition(r.State().V1Alpha2().Resources(), modules))
+		cond = append(cond, runtimeres.NewSELinuxPolicyCondition(r.State().V1Alpha2().Resources(), configSELinuxModules(cfg)))
 	}
 
 	return conditions.WaitForAll(cond...)
+}
+
+// configSELinuxModules lists the SELinuxModule IDs of the SELinuxPolicyConfig documents of the machine config, sorted.
+func configSELinuxModules(cfg config.Config) []string {
+	modules := xslices.Map(cfg.SELinuxPolicyConfigs(), func(module config.SELinuxPolicyConfig) string {
+		return runtimeres.SELinuxModuleConfigPrefix + module.Name()
+	})
+	slices.Sort(modules)
+
+	return modules
 }
 
 // DependsOn implements the Service interface.

@@ -1,0 +1,9 @@
+# The configured probe: waits for its ExtensionServiceConfig, reads the file it mounts and the environment it sets.
+name: selinux-probe-config
+depends:
+  - configuration: true
+container:
+  entrypoint: /usr/local/bin/selinux-probe
+  environment:
+    - PROBE_ROLE=config
+restart: always

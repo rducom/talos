@@ -836,8 +836,24 @@ const (
 	// SelinuxLabelInstaller is the SELinux label for the installer.
 	SelinuxLabelInstaller = "system_u:system_r:installer_t:s0"
 
-	// SelinuxLabelUnconfinedSysContainer is the SELinux label for system containers without label set (normally extensions).
+	// SelinuxLabelUnconfinedSysContainer is the SELinux label for system containers without label set.
 	SelinuxLabelUnconfinedSysContainer = "system_u:system_r:unconfined_container_t:s0"
+
+	// SELinuxTypeExtension is the SELinux type of an extension service in container mode, unless the service spec
+	// derives one or the machine config selects one.
+	SELinuxTypeExtension = "ext_t"
+
+	// SELinuxTypeExtensionPrivileged is the SELinux type of an extension service the machine config gives the host profile.
+	SELinuxTypeExtensionPrivileged = "ext_privileged_t"
+
+	// SELinuxTypeExtensionState is the SELinux type of the state directories of extension services on EPHEMERAL.
+	SELinuxTypeExtensionState = "ext_state_t"
+
+	// SELinuxTypeExtensionRun is the SELinux type of the runtime directories of extension services on tmpfs.
+	SELinuxTypeExtensionRun = "ext_run_t"
+
+	// SELinuxTypeExtensionRootfs is the SELinux type of the rootfs an extension service runs from.
+	SELinuxTypeExtensionRootfs = "ext_rootfs_t"
 
 	// SelinuxLabelTalosContainer is the SELinux label for containers declared via ContainerConfig.
 	//

@@ -70,3 +70,33 @@ func TestExtensionServiceConfigMerge(t *testing.T) {
 	assert.Equal(t, "hello world", cfgLeft.ConfigFiles()[0].Content())
 	assert.Equal(t, "bar", cfgLeft.ConfigFiles()[1].Content())
 }
+
+func TestExtensionServiceConfigValidate(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name    string
+		selinux *extensions.ServiceSELinux
+		wantErr string
+	}{
+		{"selinux settings alone are a valid document", &extensions.ServiceSELinux{SELinuxType: "ext_t"}, ""},
+		{"a type name is checked", &extensions.ServiceSELinux{SELinuxType: "ext-privileged"}, `invalid selinux type "ext-privileged" for extension "foo"`},
+		{"an empty document is refused", nil, `no config files, environment or selinux settings found for extension "foo"`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := extensions.NewServicesConfigV1Alpha1()
+			cfg.ServiceName = "foo"
+			cfg.ServiceSELinux = test.selinux
+
+			_, err := cfg.Validate(nil)
+
+			if test.wantErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.EqualError(t, err, test.wantErr)
+			}
+		})
+	}
+}
