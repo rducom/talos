@@ -115,7 +115,7 @@ func (s *SELinuxPolicyConfigV1Alpha1) Validate(validation.RuntimeMode, ...valida
 	var validationErrors error
 
 	if err := labels.ValidateDNS1123Subdomain(s.MetaName); err != nil {
-		validationErrors = errors.Join(validationErrors, fmt.Errorf("invalid name: %w", err))
+		validationErrors = errors.Join(validationErrors, fmt.Errorf("invalid name %q: lowercase letters, digits, '-' and '.' only, as a DNS subdomain: %w", s.MetaName, err))
 	}
 
 	if s.PolicyContent == "" {

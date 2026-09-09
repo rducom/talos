@@ -34,7 +34,7 @@ func TestSELinuxPolicyValidate(t *testing.T) {
 	t.Parallel()
 
 	_, err := runtime.NewSELinuxPolicyConfigV1Alpha1("").Validate(validationMode{})
-	assert.EqualError(t, err, "invalid name: domain doesn't match required format: \"\"\ncontent is required")
+	assert.EqualError(t, err, "invalid name \"\": lowercase letters, digits, '-' and '.' only, as a DNS subdomain: domain doesn't match required format: \"\"\ncontent is required")
 
 	cfg := runtime.NewSELinuxPolicyConfigV1Alpha1("hostmon")
 	cfg.PolicyContent = "(type pod_hostmon_t)\n"
