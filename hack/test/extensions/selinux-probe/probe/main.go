@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -29,6 +30,7 @@ var roles = map[string][]probeCase{
 		{"rootfs-read", func() error { return readable("/etc/probe.conf", "/etc/passwd", "/usr/lib") }},
 		{"rootfs-exec-dynamic", func() error { return exec.Command("/bin/busybox", "true").Run() }},
 		{"state-write", func() error { return writable("/var/lib/selinux-probe") }},
+		{"state-read-all", func() error { return readableTree("/var/lib/selinux-probe") }},
 		{"run-socket", func() error { return listenUnix("/run/selinux-probe/probe.sock") }},
 		{"device-tun", func() error { return openWrite("/dev/net/tun") }},
 		{"etc-read", func() error { return readable("/etc/ssl/certs/ca-certificates.crt", "/etc/os-release") }},
@@ -111,6 +113,22 @@ func readable(paths ...string) error {
 	}
 
 	return nil
+}
+
+// readableTree reads every file under dir, whoever created it: the files a pod leaves in the state of a service must be
+// readable by the service.
+func readableTree(dir string) error {
+	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if entry.Type().IsRegular() {
+			_, err = os.ReadFile(path)
+		}
+
+		return err
+	})
 }
 
 // writable creates, reads back and removes a file and a directory in dir.

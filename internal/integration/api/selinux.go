@@ -1058,6 +1058,91 @@ func (suite *SELinuxSuite) TestExtensionProbe() {
 	}
 }
 
+// TestExtensionStateMCS: a file a pod creates in the state of an extension service carries no MCS category, so that the
+// service, which runs without any, and a pod of other categories read it back; the module of the pod grants the state
+// type, which pod_domain does not.
+func (suite *SELinuxSuite) TestExtensionStateMCS() {
+	ip := suite.RandomDiscoveredNodeInternalIP()
+	nodeCtx := client.WithNode(suite.ctx, ip)
+
+	if _, err := suite.Client.ServiceInfo(nodeCtx, "ext-selinux-probe"); err != nil {
+		suite.T().Skip("skipping SELinux test since the selinux-probe extension is not installed")
+	}
+
+	suite.skipUnlessCRILabels(ip)
+
+	node, err := suite.GetK8sNodeByInternalIP(suite.ctx, ip)
+	suite.Require().NoError(err)
+
+	probeClient := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("probe-client")
+	probeClient.PolicyContent = "(type pod_probe_client_t)\n(call pod_domain (pod_probe_client_t))\n(allow pod_probe_client_t ext_selinux_probe_state_t (fs_classes (rw)))\n"
+
+	suite.PatchMachineConfig(nodeCtx, probeClient)
+
+	// the pods leave the type before its module goes
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "probe-client")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Loaded, "config-probe-client")
+	})
+
+	newPod := func(name string) podRunner {
+		podDef, err := suite.NewPod(name)
+		suite.Require().NoError(err)
+
+		podDef = podDef.WithQuiet(true).WithNamespace("kube-system").WithNodeName(node.Name).WithHostVolumeMount("/var/lib/selinux-probe", "/state").
+			WithSELinuxOptions(&corev1.SELinuxOptions{Type: "pod_probe_client_t"})
+
+		suite.Require().NoError(podDef.Create(suite.ctx, 5*time.Minute))
+
+		return podDef
+	}
+
+	writer := newPod("selinux-state-writer")
+	defer writer.Delete(suite.ctx) //nolint:errcheck
+
+	reader := newPod("selinux-state-reader")
+	defer reader.Delete(suite.ctx) //nolint:errcheck
+
+	file := "/state/" + writer.Name()
+
+	_, stderr, err := writer.Exec(suite.ctx, "echo record > "+file+" && cat "+file)
+	suite.Require().NoError(err)
+	suite.Assert().Empty(stderr, "stderr: %s", stderr)
+
+	defer writer.Exec(suite.ctx, "rm -f "+file) //nolint:errcheck
+
+	suite.Assert().Equal("system_u:object_r:ext_selinux_probe_state_t:s0", suite.fileLabel(nodeCtx, "/var/lib/selinux-probe/"+writer.Name()))
+
+	stdout, _, err := reader.Exec(suite.ctx, "cat "+file)
+	suite.Require().NoError(err)
+	suite.Assert().Equal("record\n", stdout)
+
+	// the service reads every file of its state at its start
+	logs, err := suite.serviceLogs(nodeCtx, "ext-selinux-probe")
+	suite.Require().NoError(err)
+
+	runs := strings.Count(logs, "probe: done:")
+
+	_, err = suite.Client.ServiceRestart(nodeCtx, "ext-selinux-probe")
+	suite.Require().NoError(err)
+
+	suite.Require().NoError(retry.Constant(2*time.Minute, retry.WithUnits(time.Second)).Retry(func() error {
+		if logs, err = suite.serviceLogs(nodeCtx, "ext-selinux-probe"); err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		if strings.Count(logs, "probe: done:") <= runs {
+			return retry.ExpectedErrorf("the probe has not run again")
+		}
+
+		return nil
+	}))
+
+	verdicts := strings.Split(logs, "probe: done:")
+	suite.Assert().Contains(verdicts[len(verdicts)-2], "state-read-all: PASS")
+}
+
 // serviceLogs returns the logs of a service on the node.
 func (suite *SELinuxSuite) serviceLogs(nodeCtx context.Context, id string) (string, error) {
 	stream, err := suite.Client.Logs(nodeCtx, constants.SystemContainerdNamespace, common.ContainerDriver_CONTAINERD, id, false, -1)

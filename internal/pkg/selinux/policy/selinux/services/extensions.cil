@@ -24,6 +24,10 @@
 (call ext_state_f (ext_state_t))
 (type ext_run_t)
 (call ext_run_f (ext_run_t))
+; A file a workload creates in the state of a service carries no category: the state is shared with whoever a module lets
+; in, the service first, which runs without categories, then a pod with other categories at its next start. A pod domain
+; holds every category, so it may create at s0 and read back what it wrote.
+(rangetransition workload_p ext_state_a fs_classes ((s0) (s0)))
 
 ; The rootfs of a service, /usr/local/lib/containers/<name>: machined mounts the overlay the service runs from with this
 ; context, so the files of the image and the entries the system containerd creates in it (mount points, /etc/hosts,

@@ -97,6 +97,11 @@ func TestCompile(t *testing.T) {
 			"neverallow check failed",
 		},
 		{
+			"a workload creates the files of an extension state without categories",
+			"(type pod_client_t)\n(call pod_domain (pod_client_t))\n(allow pod_client_t ext_state_t (fs_classes (rw)))\n",
+			"",
+		},
+		{
 			"an unknown type is reported with the module and the line",
 			"(allow pod_t nonexistent_t (file (read)))\n",
 			"module.cil:1",
