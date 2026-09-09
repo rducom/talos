@@ -51,11 +51,12 @@ type observation struct {
 	since     time.Time
 	rounds    uint32
 	lostBase  uint64
+	lastLost  uint64
 	lastRound time.Time
-	extension bool
 	policyKey string
 	seqno     uint32
 	module    string
+	plumbing  string // the plumbing of the domain, from the domain the system transitions to it from, and its MCS exemption
 	granted   map[string]runtime.SELinuxAccess
 	exercised map[string]runtime.SELinuxAccess
 }
@@ -194,11 +195,11 @@ func (ctrl *SELinuxAuditController) Run(ctx context.Context, r controller.Runtim
 
 			obs, ok := ctrl.observations[typ]
 			if !ok {
-				obs = &observation{since: ctrl.Now(), lostBase: lost, extension: audited[typ], exercised: map[string]runtime.SELinuxAccess{}}
+				obs = &observation{since: ctrl.Now(), lostBase: lost, lastLost: lost, exercised: map[string]runtime.SELinuxAccess{}}
 				ctrl.observations[typ] = obs
 			}
 
-			spec, deferred, err := ctrl.round(ctx, r, logger, typ, obs, logs[typ], sources, classes)
+			spec, deferred, err := ctrl.round(ctx, r, logger, typ, obs, logs[typ], sources, classes, lost)
 			if err != nil {
 				return err
 			}
@@ -228,12 +229,12 @@ func (ctrl *SELinuxAuditController) Run(ctx context.Context, r controller.Runtim
 	}
 }
 
-// audited returns the domains to audit, whether each is the domain of an extension service, the CIL sources of the
-// base policy and of the modules present, and whether the policy controller has reconciled; it keys the policy by the
-// modules present, audit modules excluded, so that a module removed leaves the audit modules whatever the status says.
+// audited returns the domains to audit, the CIL sources of the base policy and of the modules present, and whether the
+// policy controller has reconciled; it keys the policy by the modules present, audit modules excluded, so that a module
+// removed leaves the audit modules whatever the status says.
 //
 //nolint:gocyclo,cyclop
-func (ctrl *SELinuxAuditController) audited(ctx context.Context, r controller.Reader) (map[string]bool, []string, bool, error) {
+func (ctrl *SELinuxAuditController) audited(ctx context.Context, r controller.Reader) (map[string]struct{}, []string, bool, error) {
 	moduleList, err := safe.ReaderListAll[*runtime.SELinuxModule](ctx, r)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("error listing the SELinux modules: %w", err)
@@ -265,7 +266,7 @@ func (ctrl *SELinuxAuditController) audited(ctx context.Context, r controller.Re
 		loaded = status.TypedSpec().Loaded
 	}
 
-	audited := map[string]bool{}
+	audited := map[string]struct{}{}
 
 	serviceConfigs, err := safe.ReaderListAll[*runtime.ExtensionServiceConfig](ctx, r)
 	if err != nil {
@@ -278,7 +279,7 @@ func (ctrl *SELinuxAuditController) audited(ctx context.Context, r controller.Re
 		// a service in host mode has no module; the type is the one the service resolves
 		if module, ok := modules[id]; ok && cfg.TypedSpec().SELinuxAudit {
 			typ, _, _ := extgen.ResolvedType(cfg.TypedSpec().SELinuxType, module, slices.Contains(loaded, id))
-			audited[typ] = true
+			audited[typ] = struct{}{}
 		}
 	}
 
@@ -292,8 +293,8 @@ func (ctrl *SELinuxAuditController) audited(ctx context.Context, r controller.Re
 			if module.Audit() {
 				for _, typ := range selinux.Types(module.Content()) {
 					// a module declares file types too: only a domain is observed
-					if _, ok := audited[typ]; !ok && ctrl.CheckContext(selinux.Label(typ)) == nil {
-						audited[typ] = false
+					if ctrl.CheckContext(selinux.Label(typ)) == nil {
+						audited[typ] = struct{}{}
 					}
 				}
 			}
@@ -321,7 +322,7 @@ func (ctrl *SELinuxAuditController) audited(ctx context.Context, r controller.Re
 //nolint:gocyclo
 func (ctrl *SELinuxAuditController) round(
 	ctx context.Context, r controller.ReaderWriter, logger *zap.Logger,
-	typ string, obs *observation, log *runtime.SELinuxAccessLogSpec, sources []string, classes map[string]selinux.Class,
+	typ string, obs *observation, log *runtime.SELinuxAccessLogSpec, sources []string, classes map[string]selinux.Class, lost uint64,
 ) (runtime.SELinuxDomainStatusSpec, bool, error) {
 	var spec runtime.SELinuxDomainStatusSpec
 
@@ -331,6 +332,7 @@ func (ctrl *SELinuxAuditController) round(
 
 	if enumerated {
 		obs.granted, obs.policyKey, obs.seqno = ctrl.enumerate(typ, sources, classes), ctrl.policyKey, ctrl.seqno
+		obs.plumbing = ctrl.plumbing(typ, obs.granted, classes)
 	}
 
 	if log != nil {
@@ -364,7 +366,11 @@ func (ctrl *SELinuxAuditController) round(
 		obs.module, obs.lastRound = module, now
 		obs.rounds++
 
-		logger.Info("SELinux audit module reloaded", zap.String("type", typ), zap.Uint32("round", obs.rounds), zap.Int("unexercised", len(unexercised)))
+		// the records the kernel dropped since the last round, whatever their domain
+		logger.Info("SELinux audit module reloaded", zap.String("type", typ), zap.Uint32("round", obs.rounds), zap.Int("unexercised", len(unexercised)),
+			zap.Uint64("lost", max(lost, obs.lastLost)-obs.lastLost))
+
+		obs.lastLost = max(lost, obs.lastLost)
 	}
 
 	if err := safe.WriterModify(ctx, r, runtime.NewSELinuxModule("audit-"+typ), func(res *runtime.SELinuxModule) error {
@@ -385,14 +391,67 @@ func (ctrl *SELinuxAuditController) round(
 	spec.ObservedSince = obs.since
 	spec.Rounds = obs.rounds
 
-	plumbing := "; add the plumbing of the domain, such as (call pod_domain (" + typ + "))\n"
-	if obs.extension {
-		plumbing = "(call ext_plumbing (" + typ + "))\n"
-	}
-
-	spec.NarrowedModule = "(type " + typ + ")\n" + plumbing + renderRules("allow", typ, exercised, false)
+	spec.NarrowedModule = narrowedModule(typ, obs, exercised, log != nil && log.Truncated)
 
 	return spec, deferred, nil
+}
+
+// narrowedModule renders the module narrowed to the exercised accesses, on the plumbing of the domain; it opens with a
+// warning when the observation cannot be complete: the domain has not started since the audit began, or the audit log
+// dropped accesses of the domain.
+func narrowedModule(typ string, obs *observation, exercised []runtime.SELinuxAccess, truncated bool) string {
+	var header string
+
+	if !slices.ContainsFunc(exercised, func(access runtime.SELinuxAccess) bool { return access.Permission == "entrypoint" }) {
+		header += "; not started since " + obs.since.Format(time.RFC3339) + ": restart the workload, the accesses of its start are missing\n"
+	}
+
+	if truncated {
+		header += "; the audit log dropped accesses of the domain: exercised accesses may be missing\n"
+	}
+
+	return header + "(type " + typ + ")\n" + obs.plumbing + renderRules("allow", typ, exercised, false)
+}
+
+// plumbing returns the rules a narrowed module needs beside the exercised accesses: the plumbing macro of the domain the
+// system transitions to it from (pod_containerd_t for a pod, sys_containerd_t for an extension service), and its MCS
+// exemption, which the kernel tells by allowing a file access on a target carrying a category the domain does not hold.
+func (ctrl *SELinuxAuditController) plumbing(typ string, granted map[string]runtime.SELinuxAccess, classes map[string]selinux.Class) string {
+	var out string
+
+	for macro, from := range map[string]string{"pod_plumbing": "pod_containerd_t", "ext_plumbing": "sys_containerd_t"} {
+		if av, err := ctrl.ComputeAV(selinux.Label(from), selinux.Label(typ), classes["process"].Index); err == nil && av.Allowed&classes["process"].Perms["transition"] != 0 {
+			out = "(call " + macro + " (" + typ + "))\n"
+		}
+	}
+
+	if out == "" {
+		out = "; add the plumbing of the domain, such as (call pod_plumbing (" + typ + "))\n"
+	}
+
+	switch {
+	case ctrl.mcsExempt(typ, granted, classes["file"], "write"):
+		out += "(typeattributeset mcs_exempt_p " + typ + ")\n"
+	case ctrl.mcsExempt(typ, granted, classes["file"], "read"):
+		out += "(typeattributeset mcs_read_exempt_p " + typ + ")\n"
+	}
+
+	return out
+}
+
+// mcsExempt reports whether the domain keeps a granted file permission on a target carrying a category it does not hold.
+func (ctrl *SELinuxAuditController) mcsExempt(typ string, granted map[string]runtime.SELinuxAccess, file selinux.Class, perm string) bool {
+	for _, access := range granted {
+		if access.Class != "file" || access.Permission != perm {
+			continue
+		}
+
+		av, err := ctrl.ComputeAV(selinux.Label(typ), "system_u:object_r:"+access.Target+":s0:c1023", file.Index)
+
+		return err == nil && av.Allowed&file.Perms[perm] != 0
+	}
+
+	return false
 }
 
 // enumerate asks the kernel every permission the domain holds on every type of the policy, in every class.

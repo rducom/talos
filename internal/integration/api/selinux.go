@@ -1322,6 +1322,8 @@ func (suite *SELinuxSuite) TestExtensionServiceAudit() {
 
 	suite.Assert().NotEmpty(status.TypedSpec().Exercised)
 	suite.Assert().Contains(status.TypedSpec().NarrowedModule, "(call ext_plumbing ("+typ+"))")
+	// the service restarted during the audit: its start was observed
+	suite.Assert().NotContains(status.TypedSpec().NarrowedModule, "; not started since")
 
 	// the narrowed module, under a name of its own, runs the service without a denial
 	narrowed := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("narrowed")
@@ -1360,6 +1362,116 @@ func (suite *SELinuxSuite) TestExtensionServiceAudit() {
 	// the service leaves the type before its module goes: a type removed while in use leaves the kernel objects unlabeled
 	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
 	suite.extensionServicePID(nodeCtx, id, pid)
+}
+
+// TestPodDomainAudit audits a pod domain of a module until a process monitor pod has exercised its accesses, then runs
+// the same pod in the module narrowed to them, on the pod plumbing, without a denial on either side.
+//
+//nolint:gocyclo
+func (suite *SELinuxSuite) TestPodDomainAudit() {
+	if !suite.SelinuxEnforcing {
+		suite.T().Skip("skipping SELinux negative tests in permissive mode")
+	}
+
+	ip := suite.RandomDiscoveredNodeInternalIP()
+	nodeCtx := client.WithNode(suite.ctx, ip)
+	suite.skipUnlessCRILabels(ip)
+
+	node, err := suite.GetK8sNodeByInternalIP(suite.ctx, ip)
+	suite.Require().NoError(err)
+
+	audited := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("audited")
+	audited.PolicyContent = "(type pod_audited_t)\n(call pod_hostmon_domain (pod_audited_t))\n"
+	audited.PolicyAudit = true
+
+	suite.PatchMachineConfig(nodeCtx, audited)
+
+	// the pods leave the types before their modules go
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "audited")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, "pod_audited_t", func(status *runtimeres.SELinuxDomainStatus, asrt *assert.Assertions) {
+		asrt.GreaterOrEqual(status.TypedSpec().Rounds, uint32(1))
+		// nothing ran in the domain yet
+		asrt.Contains(status.TypedSpec().NarrowedModule, "; not started since")
+	})
+
+	monitor := func(name, typ string) podRunner {
+		podDef, err := suite.NewPod(name)
+		suite.Require().NoError(err)
+
+		podDef = podDef.WithQuiet(true).WithNamespace("kube-system").WithNodeName(node.Name).WithHostPID().WithSELinuxOptions(&corev1.SELinuxOptions{Type: typ})
+
+		suite.Require().NoError(podDef.Create(suite.ctx, 5*time.Minute))
+
+		_, _, err = podDef.Exec(suite.ctx, "for p in /proc/[0-9]*; do cat $p/stat $p/comm; ls $p/task; readlink $p/exe; done >/dev/null 2>&1; cat /proc/1/comm")
+		suite.Require().NoError(err)
+
+		return podDef
+	}
+
+	podDef := monitor("selinux-audited", "pod_audited_t")
+	defer podDef.Delete(suite.ctx) //nolint:errcheck
+
+	// the exercised accesses settle once the usual ones are seen, a minute after the first round at least
+	var (
+		status            *runtimeres.SELinuxDomainStatus
+		exercised, stable int
+	)
+
+	suite.Require().NoError(retry.Constant(5*time.Minute, retry.WithUnits(10*time.Second)).Retry(func() error {
+		status, err = safe.StateGetByID[*runtimeres.SELinuxDomainStatus](nodeCtx, suite.Client.COSI, "pod_audited_t")
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		if len(status.TypedSpec().Exercised) != exercised {
+			exercised, stable = len(status.TypedSpec().Exercised), 0
+		} else {
+			stable++
+		}
+
+		if exercised == 0 || stable < 3 || status.TypedSpec().Rounds < 2 {
+			return retry.ExpectedErrorf("%d accesses exercised, stable %d times, round %d", exercised, stable, status.TypedSpec().Rounds)
+		}
+
+		return nil
+	}))
+
+	module := status.TypedSpec().NarrowedModule
+	suite.Assert().Contains(module, "(call pod_plumbing (pod_audited_t))")
+	suite.Assert().Contains(module, "(typeattributeset mcs_read_exempt_p pod_audited_t)")
+	suite.Assert().NotContains(module, "; not started since")
+
+	suite.Require().NoError(podDef.Delete(suite.ctx))
+
+	// the narrowed module, under a name of its own, runs the same pod without a denial, as a subject or as a target
+	narrowed := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("pod-narrowed")
+	narrowed.PolicyContent = strings.ReplaceAll(module, "pod_audited_t", "pod_narrowed_t")
+
+	suite.PatchMachineConfig(nodeCtx, narrowed)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "pod-narrowed")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Loaded, "config-pod-narrowed")
+	})
+
+	before, beforeTarget := suite.denials(ip, "pod_narrowed_t"), suite.targetDenials(ip, "pod_narrowed_t")
+
+	narrowedPod := monitor("selinux-narrowed", "pod_narrowed_t")
+	suite.Require().NoError(narrowedPod.Delete(suite.ctx))
+
+	suite.Assert().Equal(before, suite.denials(ip, "pod_narrowed_t"))
+	suite.Assert().Equal(beforeTarget, suite.targetDenials(ip, "pod_narrowed_t"))
+}
+
+// targetDenials counts the denials of the audit log on a domain as the target, the accesses of the kubelet and of other
+// pods to its /proc entries for instance.
+func (suite *SELinuxSuite) targetDenials(node, target string) int {
+	stream, err := suite.Client.Logs(client.WithNode(suite.ctx, node), constants.SystemContainerdNamespace, common.ContainerDriver_CONTAINERD, "auditd", false, -1)
+	suite.Require().NoError(err)
+
+	return strings.Count(suite.readStream(stream), " tcontext=system_u:system_r:"+target+":")
 }
 
 func selinuxLabel(typ string) string {

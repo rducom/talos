@@ -40,18 +40,26 @@ func TestSELinuxAuditSuite(t *testing.T) {
 	s.seqno.Store(1)
 
 	// a policy of two file types and three domains: ext_hello_world_t reads and opens a_t files and searches b_t directories,
-	// pod_x_t searches b_t directories and the directories of pod_y_t, a domain of a module
+	// pod_x_t reads a_t files across MCS categories, searches b_t directories and the directories of pod_y_t, a domain of
+	// a module; the system containerd transitions to the extension domain, the CRI to the pod domains
 	classes := map[string]selinux.Class{
-		"file": {Index: 6, Perms: map[string]uint32{"read": 1, "write": 2, "open": 4}},
-		"dir":  {Index: 7, Perms: map[string]uint32{"search": 1, "write": 2}},
+		"file":    {Index: 6, Perms: map[string]uint32{"read": 1, "write": 2, "open": 4}},
+		"dir":     {Index: 7, Perms: map[string]uint32{"search": 1, "write": 2}},
+		"process": {Index: 2, Perms: map[string]uint32{"transition": 1}},
 	}
 
 	allowed := map[string]uint32{
-		"ext_hello_world_t a_t 6": 5,
-		"ext_hello_world_t b_t 7": 1,
-		"pod_x_t b_t 7":           1,
-		"pod_x_t pod_y_t 7":       1,
+		"ext_hello_world_t a_t 6":              5,
+		"ext_hello_world_t b_t 7":              1,
+		"pod_x_t a_t 6":                        1,
+		"pod_x_t b_t 7":                        1,
+		"pod_x_t pod_y_t 7":                    1,
+		"sys_containerd_t ext_hello_world_t 2": 1,
+		"pod_containerd_t pod_x_t 2":           1,
+		"pod_containerd_t pod_y_t 2":           1,
 	}
+
+	readExempt := []string{"pod_x_t"}
 
 	domains := []string{"ext_hello_world_t", "pod_x_t", "pod_y_t", "ext_t", "init_t"}
 
@@ -75,6 +83,11 @@ func TestSELinuxAuditSuite(t *testing.T) {
 
 					if source != "init_t" {
 						s.computed.Add(1)
+					}
+
+					// a target carrying a category the source does not hold: allowed to an MCS exempt domain only
+					if strings.Count(tcon, ":") > 3 && !slices.Contains(readExempt, source) {
+						return selinux.AccessVector{Seqno: s.seqno.Load()}, nil
 					}
 
 					return selinux.AccessVector{Allowed: allowed[source+" "+target+" "+string(rune('0'+class))], Seqno: s.seqno.Load()}, nil
@@ -165,9 +178,12 @@ func (suite *SELinuxAuditSuite) TestAudit() {
 		asrt.Equal("(auditallow ext_hello_world_t a_t (file (open)))\n(auditallow ext_hello_world_t b_t (dir (search)))\n", strings.SplitN(res.TypedSpec().Content, "\n", 2)[1])
 	})
 
+	// the domain has not started since the audit began (no entrypoint exercised), and the log dropped accesses
 	ctest.AssertResource(suite, "ext_hello_world_t", func(res *runtimeres.SELinuxDomainStatus, asrt *assert.Assertions) {
 		asrt.Equal(uint32(2), res.TypedSpec().Rounds)
-		asrt.Equal("(type ext_hello_world_t)\n(call ext_plumbing (ext_hello_world_t))\n(allow ext_hello_world_t a_t (file (read)))\n", res.TypedSpec().NarrowedModule)
+		asrt.Equal("; not started since "+res.TypedSpec().ObservedSince.Format(time.RFC3339)+": restart the workload, the accesses of its start are missing\n"+
+			"; the audit log dropped accesses of the domain: exercised accesses may be missing\n"+
+			"(type ext_hello_world_t)\n(call ext_plumbing (ext_hello_world_t))\n(allow ext_hello_world_t a_t (file (read)))\n", res.TypedSpec().NarrowedModule)
 	})
 
 	cfg.TypedSpec().SELinuxAudit = false
@@ -176,7 +192,8 @@ func (suite *SELinuxAuditSuite) TestAudit() {
 	ctest.AssertNoResource[*runtimeres.SELinuxModule](suite, "audit-ext_hello_world_t")
 	ctest.AssertNoResource[*runtimeres.SELinuxDomainStatus](suite, "ext_hello_world_t")
 
-	// the domains of an audited config module are observed too, without the extension plumbing; its file types are not
+	// the domains of an audited config module are observed too, on the pod plumbing the CRI transitions to, with the MCS
+	// exemption the kernel reports; its file types are not
 	policy := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("x")
 	policy.PolicyContent = "(type pod_x_t)\n(call pod_domain (pod_x_t))\n(type x_file_t)\n"
 	policy.PolicyAudit = true
@@ -188,8 +205,8 @@ func (suite *SELinuxAuditSuite) TestAudit() {
 
 	ctest.AssertResource(suite, "pod_x_t", func(res *runtimeres.SELinuxDomainStatus, asrt *assert.Assertions) {
 		asrt.Equal(uint32(1), res.TypedSpec().Rounds)
-		asrt.Len(res.TypedSpec().Unexercised, 1)
-		asrt.True(strings.HasPrefix(res.TypedSpec().NarrowedModule, "(type pod_x_t)\n; add the plumbing of the domain"))
+		asrt.Len(res.TypedSpec().Unexercised, 2)
+		asrt.Contains(res.TypedSpec().NarrowedModule, "(type pod_x_t)\n(call pod_plumbing (pod_x_t))\n(typeattributeset mcs_read_exempt_p pod_x_t)\n")
 	})
 	ctest.AssertNoResource[*runtimeres.SELinuxDomainStatus](suite, "x_file_t")
 	ctest.AssertNoResource[*runtimeres.SELinuxModule](suite, "audit-x_file_t")
@@ -217,7 +234,7 @@ func (suite *SELinuxAuditSuite) TestPolicyChanges() {
 	suite.Create(config.NewMachineConfig(cntr))
 
 	ctest.AssertResource(suite, "audit-pod_x_t", func(res *runtimeres.SELinuxModule, asrt *assert.Assertions) {
-		asrt.Equal("(auditallow pod_x_t b_t (dir (search)))\n(auditallow pod_x_t pod_y_t (dir (search)))\n", strings.SplitN(res.TypedSpec().Content, "\n", 2)[1])
+		asrt.Equal("(auditallow pod_x_t a_t (file (read)))\n(auditallow pod_x_t b_t (dir (search)))\n(auditallow pod_x_t pod_y_t (dir (search)))\n", strings.SplitN(res.TypedSpec().Content, "\n", 2)[1])
 	})
 
 	// the document y is removed and the policy controller rejects the set, the audit module still naming pod_y_t
@@ -228,7 +245,7 @@ func (suite *SELinuxAuditSuite) TestPolicyChanges() {
 	suite.Update(status)
 
 	ctest.AssertResource(suite, "audit-pod_x_t", func(res *runtimeres.SELinuxModule, asrt *assert.Assertions) {
-		asrt.Equal("(auditallow pod_x_t b_t (dir (search)))\n", strings.SplitN(res.TypedSpec().Content, "\n", 2)[1])
+		asrt.Equal("(auditallow pod_x_t a_t (file (read)))\n(auditallow pod_x_t b_t (dir (search)))\n", strings.SplitN(res.TypedSpec().Content, "\n", 2)[1])
 	})
 
 	ctest.AssertResource(suite, "pod_x_t", func(res *runtimeres.SELinuxDomainStatus, asrt *assert.Assertions) {
@@ -249,7 +266,8 @@ func (suite *SELinuxAuditSuite) TestPolicyChanges() {
 	})
 }
 
-// TestNarrowedModuleCompiles: the rules the audit renders are a module the base policy compiles, on the extension plumbing.
+// TestNarrowedModuleCompiles: the rules the audit renders are a module the base policy compiles, on the extension plumbing
+// and on the pod plumbing with an MCS exemption.
 func TestNarrowedModuleCompiles(t *testing.T) {
 	if _, err := os.Stat("/usr/bin/secilc"); err != nil {
 		t.Skip("secilc and the policy sources are only available in the Talos rootfs")
@@ -262,6 +280,12 @@ func TestNarrowedModuleCompiles(t *testing.T) {
 		{Target: "ext_state_t", Class: "dir", Permission: "write"},
 		{Target: "device_t", Class: "chr_file", Permission: "ioctl"},
 	}, false)
+
+	module += "(type pod_narrowed_t)\n(call pod_plumbing (pod_narrowed_t))\n(typeattributeset mcs_read_exempt_p pod_narrowed_t)\n" +
+		runtimecontrollers.RenderRules("allow", "pod_narrowed_t", []runtimeres.SELinuxAccess{
+			{Target: "kubelet_t", Class: "dir", Permission: "search"},
+			{Target: "procfs_t", Class: "file", Permission: "read"},
+		}, false)
 
 	_, err := selinux.Compile(t.Context(), map[string]string{"config-narrowed": module})
 	require.NoError(t, err)
