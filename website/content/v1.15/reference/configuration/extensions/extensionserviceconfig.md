@@ -63,7 +63,7 @@ ServiceSELinux is the SELinux settings of an extension service.
 
 | Field | Type | Description | Value(s) |
 |-------|------|-------------|----------|
-|`type` |string |SELinux type the service runs as, in place of the type Talos derives from the service spec.<br>The type must exist in the loaded policy: `ext_t` and `ext_privileged_t` come with the base policy,<br>any other is declared by a SELinuxPolicyConfig document, with the `ext_domain` or `ext_privileged_domain` macro.<br>The state directories of the service keep the types derived from its spec: a type of a document reaches them<br>with `ext_<name>_state_t` and `ext_<name>_run_t`, or the `ext_state_a` attribute of every state type.<br>A service which failed on a type absent from the policy restarts with the next version of this document. <details><summary>Show example(s)</summary>{{< highlight yaml >}}
+|`type` |string |SELinux type the service runs as, in place of the type Talos derives from the service spec.<br>The type must exist in the loaded policy: `ext_t` and `ext_privileged_t` come with the base policy,<br>any other is declared by a SELinuxPolicyConfig document, with the `ext_domain` or `ext_privileged_domain` macro.<br>The state directories of the service keep the types derived from its spec: a type of a document reaches them<br>with `ext_<name>_state_t` and `ext_<name>_run_t`, or the `ext_state_a` attribute of every state type.<br>A service waits for the type to be defined in the loaded policy before it starts: `talosctl service ext-<name>`<br>says so, and the service starts by itself once a document declares the type. <details><summary>Show example(s)</summary>{{< highlight yaml >}}
 type: ext_privileged_t
 {{< /highlight >}}</details> | |
 

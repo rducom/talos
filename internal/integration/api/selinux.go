@@ -965,14 +965,26 @@ func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
 	suite.Assert().Equal("system_u:system_r:ext_privileged_t:s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
 
-	cfg.ServiceSELinux.SELinuxType = "ext_unknown_t"
+	// a type no module declares yet: the service waits for it, and starts by itself once a module declares it
+	cfg.ServiceSELinux.SELinuxType = "ext_declared_later_t"
 
 	suite.PatchMachineConfig(nodeCtx, cfg)
-	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, `selinux type "ext_unknown_t" is not defined in the loaded policy`)
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "selinux type ext_declared_later_t")
 
+	declared := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("declared-later")
+	declared.PolicyContent = "(type ext_declared_later_t)\n(call ext_privileged_domain (ext_declared_later_t))\n"
+
+	suite.PatchMachineConfig(nodeCtx, declared)
+
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
+	suite.Assert().Equal("system_u:system_r:ext_declared_later_t:s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	// the service leaves the type before its module goes
 	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
 	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
 	suite.Assert().Equal("system_u:system_r:"+extgen.TypeName(name)+":s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "declared-later")
 
 	// a ceiling every extension domain contradicts: the compile fails, the service keeps running with the loaded policy
 	ceiling := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("ceiling")

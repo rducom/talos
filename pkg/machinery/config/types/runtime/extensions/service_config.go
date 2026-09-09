@@ -74,7 +74,8 @@ type ServiceSELinux struct {
 	//     any other is declared by a SELinuxPolicyConfig document, with the `ext_domain` or `ext_privileged_domain` macro.
 	//     The state directories of the service keep the types derived from its spec: a type of a document reaches them
 	//     with `ext_<name>_state_t` and `ext_<name>_run_t`, or the `ext_state_a` attribute of every state type.
-	//     A service which failed on a type absent from the policy restarts with the next version of this document.
+	//     A service waits for the type to be defined in the loaded policy before it starts: `talosctl service ext-<name>`
+	//     says so, and the service starts by itself once a document declares the type.
 	//   examples:
 	//     - value: >
 	//        "ext_privileged_t"

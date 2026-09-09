@@ -482,3 +482,18 @@ func TestExtensionSELinuxModules(t *testing.T) {
 
 	assert.Equal(t, []string{"ext-hello-world", "config-custom"}, svc.SELinuxModules(cfg))
 }
+
+// TestExtensionSELinuxCondition: a service waits for the type the machine config selects, checked against the loaded
+// policy, so that it starts by itself once a module declares the type.
+func TestExtensionSELinuxCondition(t *testing.T) {
+	rt := newExtensionRuntime(t)
+	svc := &services.Extension{Spec: extservices.Spec{Name: "hello-world"}}
+
+	assert.Equal(t, "selinux policy modules ext-hello-world", svc.SELinuxCondition(rt).String())
+
+	cfg := runtimeres.NewExtensionServiceConfigSpec(runtimeres.NamespaceName, "hello-world")
+	cfg.TypedSpec().SELinuxType = "ext_custom_t"
+	require.NoError(t, rt.State().V1Alpha2().Resources().Create(t.Context(), cfg))
+
+	assert.Equal(t, "selinux policy modules ext-hello-world, selinux type ext_custom_t", svc.SELinuxCondition(rt).String())
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/siderolabs/gen/xslices"
 
+	"github.com/siderolabs/talos/internal/app/machined/pkg/runtime"
 	"github.com/siderolabs/talos/internal/app/machined/pkg/system/runner"
 	"github.com/siderolabs/talos/pkg/machinery/config/config"
 	runtimeres "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
@@ -70,4 +71,9 @@ var ConfinedType = confinedType
 // SELinuxModules exposes selinuxModules for tests.
 func (svc *Extension) SELinuxModules(cfg config.Config) []string {
 	return svc.selinuxModules(cfg)
+}
+
+// SELinuxCondition exposes selinuxCondition for tests.
+func (svc *Extension) SELinuxCondition(r runtime.Runtime) *runtimeres.SELinuxPolicyCondition {
+	return svc.selinuxCondition(r)
 }

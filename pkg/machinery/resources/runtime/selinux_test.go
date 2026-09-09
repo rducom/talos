@@ -35,4 +35,14 @@ func TestSELinuxPolicyCondition(t *testing.T) {
 	assert.NoError(t, runtime.NewSELinuxPolicyCondition(st, []string{"ext-hello-world"}).Wait(ctx))
 	assert.NoError(t, runtime.NewSELinuxPolicyCondition(st, nil).Wait(ctx))
 	assert.ErrorIs(t, runtime.NewSELinuxPolicyCondition(st, []string{"ext-hello-world", "ext-tailscale"}).Wait(ctx), context.DeadlineExceeded)
+
+	// a type is checked at every change of the status, until the policy defines it
+	defined := func(typ string) bool { return typ == "ext_custom_t" }
+
+	ctx, cancel = context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	assert.NoError(t, runtime.NewSELinuxPolicyCondition(st, []string{"ext-hello-world"}).WithType("ext_custom_t", defined).Wait(ctx))
+	assert.Equal(t, "selinux policy modules ext-hello-world, selinux type ext_custom_t", runtime.NewSELinuxPolicyCondition(st, []string{"ext-hello-world"}).WithType("ext_custom_t", defined).String())
+	assert.ErrorIs(t, runtime.NewSELinuxPolicyCondition(st, []string{"ext-hello-world"}).WithType("ext_unknown_t", defined).Wait(ctx), context.DeadlineExceeded)
 }

@@ -207,9 +207,10 @@ func (svc *Extension) Condition(r runtime.Runtime) conditions.Condition {
 	}
 
 	// the policy module derived from the spec, and the modules of the machine config which may declare the type of the
-	// service, are compiled, loaded or rejected before the service starts
+	// service, are compiled, loaded or rejected before the service starts; a type the machine config selects is waited
+	// for, so that the service starts by itself once a module declares it
 	if selinux.IsEnabled() && svc.Spec.RunnerMode != extservices.RunnerModeHost {
-		conds = append(conds, runtimeres.NewSELinuxPolicyCondition(r.State().V1Alpha2().Resources(), svc.selinuxModules(r.Config())))
+		conds = append(conds, svc.selinuxCondition(r))
 	}
 
 	if len(conds) == 0 {
@@ -217,6 +218,18 @@ func (svc *Extension) Condition(r runtime.Runtime) conditions.Condition {
 	}
 
 	return conditions.WaitForAll(conds...)
+}
+
+// selinuxCondition waits for the modules the service depends on and for the type the machine config selects, if any.
+func (svc *Extension) selinuxCondition(r runtime.Runtime) *runtimeres.SELinuxPolicyCondition {
+	st := r.State().V1Alpha2().Resources()
+	condition := runtimeres.NewSELinuxPolicyCondition(st, svc.selinuxModules(r.Config()))
+
+	if configSpec, err := safe.StateGetByID[*runtimeres.ExtensionServiceConfig](context.Background(), st, svc.Spec.Name); err == nil && configSpec.TypedSpec().SELinuxType != "" {
+		condition = condition.WithType(configSpec.TypedSpec().SELinuxType, func(typ string) bool { return selinux.CheckContext(selinux.Label(typ)) == nil })
+	}
+
+	return condition
 }
 
 // selinuxModules lists the SELinuxModule IDs the service waits for: its own and those of the machine config.
