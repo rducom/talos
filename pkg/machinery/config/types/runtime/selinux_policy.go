@@ -61,7 +61,8 @@ type SELinuxPolicyConfigV1Alpha1 struct {
 	//     `privileged_readable_f` (files a privileged pod may read), `mcs_exempt_p` and `mcs_read_exempt_p`
 	//     (domains ignoring MCS categories, in both directions or for reading only) are available to extra rules.
 	//     Whatever a module grants, a workload domain never reads the STATE partition, connects to machined
-	//     or ptraces a host service: `secilc` rejects such a module and the running policy is unchanged.
+	//     or ptraces a host service: `secilc` rejects such a module. A rejected module is left out and the other
+	//     modules are loaded; `talosctl get selinuxpolicystatus` names it with the error of the compiler.
 	//     Anything else is open to a module, which is as trusted as the machine config carrying it.
 	//     A workload selects the type with `securityContext.seLinuxOptions.type` in its pod spec.
 	//     Load the module before rolling the workload out, a type unknown to the policy fails the container at runc;

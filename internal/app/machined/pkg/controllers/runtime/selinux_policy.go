@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/cosi-project/runtime/pkg/controller"
 	"github.com/cosi-project/runtime/pkg/safe"
@@ -23,7 +24,12 @@ import (
 
 // SELinuxPolicyController compiles the SELinux policy with the SELinuxPolicyConfig modules and loads it.
 type SELinuxPolicyController struct {
-	modules map[string]string // modules compiled into the loaded policy, nil until the first reconcile
+	// The compiler and the loader, replaced in tests.
+	Compile func(ctx context.Context, modules map[string]string) ([]byte, error)
+	Load    func(policy []byte) error
+
+	requested map[string]string // modules of the machine config at the last reconcile, nil until the first one
+	loaded    map[string]string // modules compiled into the loaded policy
 }
 
 // Name implements controller.Controller interface.
@@ -57,8 +63,12 @@ func (ctrl *SELinuxPolicyController) Outputs() []controller.Output {
 //
 //nolint:gocyclo
 func (ctrl *SELinuxPolicyController) Run(ctx context.Context, r controller.Runtime, logger *zap.Logger) error {
-	if !selinux.IsEnabled() {
-		return nil
+	if ctrl.Compile == nil {
+		if !selinux.IsEnabled() {
+			return nil
+		}
+
+		ctrl.Compile, ctrl.Load = selinux.Compile, selinux.LoadPolicy
 	}
 
 	for {
@@ -81,53 +91,88 @@ func (ctrl *SELinuxPolicyController) Run(ctx context.Context, r controller.Runti
 			}
 		}
 
-		if ctrl.modules != nil && maps.Equal(modules, ctrl.modules) {
+		if ctrl.requested != nil && maps.Equal(modules, ctrl.requested) {
 			continue
 		}
 
-		names := slices.Sorted(maps.Keys(modules))
-
-		var loadErr error
+		var rejected map[string]error
 
 		// init has loaded the base policy already, only the modules need a compile and a load
-		if ctrl.modules != nil || len(modules) > 0 {
-			if loadErr = ctrl.load(ctx, modules); loadErr == nil {
-				logger.Info("SELinux policy loaded", zap.Strings("modules", names))
+		if ctrl.requested != nil || len(modules) > 0 {
+			if ctrl.loaded, rejected, err = ctrl.load(ctx, modules); err != nil {
+				return err
+			}
+
+			logger.Info("SELinux policy loaded", zap.Strings("modules", slices.Sorted(maps.Keys(ctrl.loaded))))
+
+			for _, name := range slices.Sorted(maps.Keys(rejected)) {
+				logger.Error("SELinux policy module rejected", zap.String("module", name), zap.Error(rejected[name]))
 			}
 		}
 
-		if loadErr == nil {
-			ctrl.modules = modules
-		}
+		ctrl.requested = modules
 
 		if err = safe.WriterModify(ctx, r, runtime.NewSELinuxPolicyStatus(), func(status *runtime.SELinuxPolicyStatus) error {
-			status.TypedSpec().Modules = names
-			status.TypedSpec().Error = ""
-
-			if loadErr != nil {
-				status.TypedSpec().Error = loadErr.Error()
-			}
+			status.TypedSpec().Modules = slices.Sorted(maps.Keys(ctrl.loaded))
+			status.TypedSpec().Error = rejectedError(rejected)
 
 			return nil
 		}); err != nil {
 			return fmt.Errorf("error updating SELinux policy status: %w", err)
 		}
-
-		if loadErr != nil {
-			return loadErr
-		}
 	}
 }
 
-func (ctrl *SELinuxPolicyController) load(ctx context.Context, modules map[string]string) error {
-	policy, err := selinux.Compile(ctx, modules)
+// load compiles and loads the policy with the modules, leaving out the ones the compile rejects: the modules are added one
+// at a time, in name order, and a module rejected for a type a later one declares gets another pass, so that a bad module
+// never takes the others down.
+func (ctrl *SELinuxPolicyController) load(ctx context.Context, modules map[string]string) (map[string]string, map[string]error, error) {
+	loaded, rejected := modules, map[string]error{}
+
+	policy, err := ctrl.Compile(ctx, modules)
 	if err != nil {
-		return fmt.Errorf("error compiling SELinux policy: %w", err)
+		loaded = map[string]string{}
+
+		for added := true; added; {
+			added = false
+
+			for _, name := range slices.Sorted(maps.Keys(modules)) {
+				if _, ok := loaded[name]; ok {
+					continue
+				}
+
+				trial := maps.Clone(loaded)
+				trial[name] = modules[name]
+
+				if _, err = ctrl.Compile(ctx, trial); err == nil {
+					loaded, added = trial, true
+
+					delete(rejected, name)
+				} else {
+					rejected[name] = err
+				}
+			}
+		}
+
+		if policy, err = ctrl.Compile(ctx, loaded); err != nil {
+			return nil, nil, fmt.Errorf("error compiling SELinux policy: %w", err)
+		}
 	}
 
-	if err = selinux.LoadPolicy(policy); err != nil {
-		return fmt.Errorf("error loading SELinux policy: %w", err)
+	if err = ctrl.Load(policy); err != nil {
+		return nil, nil, fmt.Errorf("error loading SELinux policy: %w", err)
 	}
 
-	return nil
+	return loaded, rejected, nil
+}
+
+// rejectedError renders the rejected modules and their errors for the status.
+func rejectedError(rejected map[string]error) string {
+	lines := make([]string, 0, len(rejected))
+
+	for _, name := range slices.Sorted(maps.Keys(rejected)) {
+		lines = append(lines, fmt.Sprintf("module %s rejected: %v", name, rejected[name]))
+	}
+
+	return strings.Join(lines, "\n")
 }

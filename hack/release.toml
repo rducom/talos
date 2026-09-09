@@ -35,8 +35,9 @@ gets `/sys/fs/selinux` and the containers contexts file, so that it labels volum
 
 The new `SELinuxPolicyConfig` document carries a policy module in CIL, which machined compiles with the Talos policy and loads
 without a reboot. A module declares one type per workload with the `pod_domain`, `pod_privileged_domain` or `pod_hostmon_domain`
-macro, and the workload selects it with `securityContext.seLinuxOptions.type`. The compiled policy is no longer embedded in
-machined: the image build ships it with its sources and `secilc` in `/usr/share/selinux/talos`.
+macro, and the workload selects it with `securityContext.seLinuxOptions.type`. A module the compiler rejects is left out and
+the others are loaded, at boot as well as on a change; `talosctl get selinuxpolicystatus` names it with the error. The compiled
+policy is no longer embedded in machined: the image build ships it with its sources and `secilc` in `/usr/share/selinux/talos`.
 
 A workload writing files which outlive the pod, a hostPath or a local volume, needs a fixed `securityContext.seLinuxOptions.level`
 above the range the CRI draws from (`s0:c512` to `s0:c1021`), else the pod of the next start cannot read them. The kube-apiserver
