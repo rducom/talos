@@ -65,6 +65,13 @@ directories keep the types derived from the spec whatever the type: `ext_t` and 
 every service, a derived or a declared type its own. A pod reaching the state of a service through a hostPath needs a
 module granting its domain the state type and `connectto` on the domain of the service; the derived module says how. The
 files a pod creates there carry no MCS category, so that the service and other pods read them.
+
+`selinux.audit: true` in `ExtensionServiceConfig`, or `audit: true` in `SELinuxPolicyConfig`, observes a domain:
+`talosctl get selinuxdomainstatus <type> -o yaml` lists what it exercised of the permissions the policy grants it,
+what it did not, a module narrowed to the exercised ones, and its denials as allow rules to sort out. The narrowed
+module is built on the plumbing macro of the domain, `ext_plumbing` or `pod_plumbing`, carries the MCS exemption of the
+domain, and warns while the domain has not started since the audit began or the audit log dropped its accesses. The
+records lost are a counter of the kernel for every domain; the module `audit-<type>` carries the whole unexercised set.
 """
 
     [notes.kubespan_peer_endpoint_filters]

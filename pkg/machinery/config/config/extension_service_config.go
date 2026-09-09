@@ -11,6 +11,8 @@ type ExtensionServiceConfig interface {
 	Environment() []string
 	// SELinuxType is the type the service runs as, empty to let Talos choose it.
 	SELinuxType() string
+	// SELinuxAudit reports whether the permissions the service exercises are audited.
+	SELinuxAudit() bool
 }
 
 // ExtensionServiceConfigFile is a config file for extension services.

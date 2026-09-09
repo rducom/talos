@@ -102,6 +102,12 @@ func TestCompile(t *testing.T) {
 			"",
 		},
 		{
+			"a narrowed type built on the plumbing reaches nothing the module does not grant",
+			"(type ext_x_state_t)\n(call ext_state_f (ext_x_state_t))\n(type ext_y_t)\n(call ext_plumbing (ext_y_t))\n" +
+				"(neverallow ext_y_t ext_x_state_t (file (read)))\n(neverallow ext_y_t ext_state_t (file (read)))\n",
+			"",
+		},
+		{
 			"an unknown type is reported with the module and the line",
 			"(allow pod_t nonexistent_t (file (read)))\n",
 			"module.cil:1",

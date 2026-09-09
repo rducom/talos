@@ -80,6 +80,11 @@ type ServiceSELinux struct {
 	//     - value: >
 	//        "ext_privileged_t"
 	SELinuxType string `yaml:"type,omitempty"`
+	//   description: |
+	//     Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the
+	//     policy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.
+	//     The service restarts when the flag is set, so that the accesses of its start are observed.
+	SELinuxAudit bool `yaml:"audit,omitempty"`
 }
 
 var selinuxTypeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*_t$`)
@@ -213,6 +218,11 @@ func (e *ServiceConfigV1Alpha1) SELinuxType() string {
 	}
 
 	return e.ServiceSELinux.SELinuxType
+}
+
+// SELinuxAudit implements config.ExtensionServiceConfig interface.
+func (e *ServiceConfigV1Alpha1) SELinuxAudit() bool {
+	return e.ServiceSELinux != nil && e.ServiceSELinux.SELinuxAudit
 }
 
 // Content implements config.ExtensionServiceConfigFile interface.
