@@ -996,9 +996,35 @@ func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 
 	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
 		asrt.Contains(status.TypedSpec().Modules, "config-ceiling")
+		asrt.NotContains(status.TypedSpec().Loaded, "config-ceiling")
+		asrt.Contains(status.TypedSpec().Loaded, "ext-"+name)
+		asrt.Contains(status.TypedSpec().Error, "module config-ceiling rejected")
 		asrt.Contains(status.TypedSpec().Error, "neverallow check failed")
 	})
 
+	suite.Assert().Equal("system_u:system_r:"+extgen.TypeName(name)+":s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	// the rejected document takes nothing else down: a module declared beside it is loaded, the service selects its type
+	beside := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("beside-ceiling")
+	beside.PolicyContent = "(type ext_beside_t)\n(call ext_privileged_domain (ext_beside_t))\n"
+
+	suite.PatchMachineConfig(nodeCtx, beside)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "beside-ceiling")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Loaded, "config-beside-ceiling")
+		asrt.NotContains(status.TypedSpec().Loaded, "config-ceiling")
+	})
+
+	cfg.ServiceSELinux.SELinuxType = "ext_beside_t"
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
+	suite.Assert().Equal("system_u:system_r:ext_beside_t:s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
 	suite.Assert().Equal("system_u:system_r:"+extgen.TypeName(name)+":s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
 
 	suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "ceiling")
