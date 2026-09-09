@@ -13,7 +13,9 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -91,6 +93,13 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 	<-stop
+}
+
+// enforcing reports whether the node runs SELinux in enforcing mode, from the kernel command line Talos sets.
+func enforcing() bool {
+	cmdline, err := os.ReadFile("/proc/cmdline")
+
+	return err == nil && slices.Contains(strings.Fields(string(cmdline)), "enforcing=1")
 }
 
 // readable reads every path: the entries of a directory, the content of a file.
@@ -181,11 +190,14 @@ func openWrite(path string) error {
 	return f.Close()
 }
 
-// denied expects the directory to be unreadable; a directory which does not exist on the node skips the case.
+// denied expects the directory to be unreadable; a directory which does not exist on the node skips the case, and so
+// does a node in permissive mode, where the denial is logged by auditd and nothing is refused.
 func denied(path string) error {
 	_, err := os.ReadDir(path)
 
 	switch {
+	case err == nil && !enforcing():
+		return fmt.Errorf("%w: %s is readable in permissive mode, the denial is in the audit log", errSkip, path)
 	case err == nil:
 		return fmt.Errorf("%s is readable", path)
 	case errors.Is(err, syscall.EACCES):

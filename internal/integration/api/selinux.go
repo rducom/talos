@@ -1076,11 +1076,11 @@ func (suite *SELinuxSuite) TestExtensionProbe() {
 		}))
 
 		for line := range strings.SplitSeq(logs, "\n") {
-			if !suite.SelinuxEnforcing && strings.Contains(line, "-denied: FAIL: ") && strings.HasSuffix(line, " is readable") {
-				continue
-			}
-
 			suite.Assert().NotContains(line, ": FAIL:", id)
+
+			if !suite.SelinuxEnforcing && strings.Contains(line, "-denied: ") {
+				suite.Assert().Contains(line, ": SKIP: ", id)
+			}
 		}
 	}
 
