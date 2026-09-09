@@ -459,7 +459,7 @@ COPY --link --from=go-generate /src/pkg/machinery/nethelpers/ /pkg/machinery/net
 COPY --link --from=go-generate /src/pkg/machinery/extensions/ /pkg/machinery/extensions/
 COPY --link --from=go-generate /src/pkg/machinery/version/os-release /pkg/machinery/version/os-release
 COPY --link --from=ipxe-generate / /pkg/provision/providers/vm/internal/ipxe/data/ipxe/
-COPY --link --from=selinux-generate / /internal/pkg/selinux/
+COPY --link --from=selinux-generate /policy/file_contexts /internal/pkg/selinux/policy/file_contexts
 COPY --link --from=embed-abbrev / /
 COPY --link --from=pkg-ca-certificates /etc/ssl/certs/ca-certificates /internal/app/machined/pkg/controllers/secrets/data/
 COPY --link --from=microsoft-key-keys / /internal/pkg/secureboot/database/certs/
@@ -823,6 +823,10 @@ END
 COPY --chmod=0644 hack/zoneinfo/Etc/UTC /rootfs/usr/share/zoneinfo/Etc/UTC
 COPY --chmod=0644 hack/nfsmount.conf /rootfs/etc/nfsmount.conf
 COPY --chmod=0644 hack/selinux/virtual_domain_context hack/selinux/virtual_image_context /rootfs/etc/selinux/targeted/contexts/
+COPY --link --from=selinux-generate /policy/policy.33 /rootfs/usr/share/selinux/talos/policy.33
+COPY --link internal/pkg/selinux/policy/selinux /rootfs/usr/share/selinux/talos
+COPY --chmod=0644 hack/selinux/containers_contexts /rootfs/usr/share/containers/selinux/contexts
+COPY --link --from=tools-amd64 /usr/bin/secilc /rootfs/usr/bin/secilc
 COPY --chmod=0644 hack/containerd.toml /rootfs/etc/containerd/config.toml
 COPY --chmod=0644 hack/cri-containerd.toml /rootfs/etc/cri/containerd.toml
 COPY --chmod=0644 hack/cri-plugin.part /rootfs/etc/cri/conf.d/00-base.part
@@ -914,6 +918,10 @@ END
 COPY --chmod=0644 hack/zoneinfo/Etc/UTC /rootfs/usr/share/zoneinfo/Etc/UTC
 COPY --chmod=0644 hack/nfsmount.conf /rootfs/etc/nfsmount.conf
 COPY --chmod=0644 hack/selinux/virtual_domain_context hack/selinux/virtual_image_context /rootfs/etc/selinux/targeted/contexts/
+COPY --link --from=selinux-generate /policy/policy.33 /rootfs/usr/share/selinux/talos/policy.33
+COPY --link internal/pkg/selinux/policy/selinux /rootfs/usr/share/selinux/talos
+COPY --chmod=0644 hack/selinux/containers_contexts /rootfs/usr/share/containers/selinux/contexts
+COPY --link --from=tools-arm64 /usr/bin/secilc /rootfs/usr/bin/secilc
 COPY --chmod=0644 hack/containerd.toml /rootfs/etc/containerd/config.toml
 COPY --chmod=0644 hack/cri-containerd.toml /rootfs/etc/cri/containerd.toml
 COPY --chmod=0644 hack/cri-plugin.part /rootfs/etc/cri/conf.d/00-base.part

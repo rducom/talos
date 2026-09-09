@@ -68,8 +68,11 @@
 ; ; Used when Mayastor/OpenEBS is enabled
 ; (allow kubelet_t hugetlbfs_t (fs_classes (rw)))
 
-; ; /registration/rook-ceph.cephfs.csi.ceph.com-reg.sock and similar when using Rook-Ceph
-; (allow kubelet_t pod_p (unix_stream_socket (connectto)))
+; /registration/rook-ceph.cephfs.csi.ceph.com-reg.sock and similar when using Rook-Ceph
+(allow kubelet_t pod_p (unix_stream_socket (connectto)))
 
 ; local-path-provisioner
 (allow kubelet_t ephemeral_t (fs_classes (rw)))
+
+(typeattributeset mcs_exempt_p kubelet_t)
+(allow kubelet_t usr_t (fs_classes (ro)))

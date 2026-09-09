@@ -1,0 +1,21 @@
+apiVersion: v1alpha1
+kind: CRICustomizationConfig
+name: selinux
+content: |
+  [plugins."io.containerd.cri.v1.runtime"]
+    enable_selinux = true
+    selinux_category_range = 512
+---
+apiVersion: v1alpha1
+kind: SELinuxPolicyConfig
+name: hostmon
+content: |
+  (type pod_hostmon_t)
+  (call pod_hostmon_domain (pod_hostmon_t))
+---
+apiVersion: v1alpha1
+kind: SELinuxPolicyConfig
+name: cni
+content: |
+  (type pod_cni_t)
+  (call pod_privileged_domain (pod_cni_t))
