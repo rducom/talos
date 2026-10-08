@@ -17,5 +17,9 @@ func (o *ServiceConfigV1Alpha1) DeepCopy() *ServiceConfigV1Alpha1 {
 		cp.ServiceEnvironment = make([]string, len(o.ServiceEnvironment))
 		copy(cp.ServiceEnvironment, o.ServiceEnvironment)
 	}
+	if o.ServiceSELinux != nil {
+		cp.ServiceSELinux = new(ServiceSELinux)
+		*cp.ServiceSELinux = *o.ServiceSELinux
+	}
 	return &cp
 }

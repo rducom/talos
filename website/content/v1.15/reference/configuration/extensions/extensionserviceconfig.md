@@ -32,6 +32,7 @@ environment:
 |`name` |string |Name of the extension service.  | |
 |`configFiles` |<a href="#ExtensionServiceConfig.configFiles.">[]ConfigFile</a> |The config files for the extension service.  | |
 |`environment` |[]string |The environment for the extension service.  | |
+|`selinux` |<a href="#ExtensionServiceConfig.selinux">ServiceSELinux</a> |SELinux settings of the extension service, ignored for a service in host runner mode.<br>A change of the settings restarts the service.  | |
 
 
 
@@ -47,6 +48,24 @@ ConfigFile is a config file for extension services.
 |-------|------|-------------|----------|
 |`content` |string |The content of the extension service config file.  | |
 |`mountPath` |string |The mount path of the extension service config file.  | |
+
+
+
+
+
+
+## selinux {#ExtensionServiceConfig.selinux}
+
+ServiceSELinux is the SELinux settings of an extension service.
+
+
+
+
+| Field | Type | Description | Value(s) |
+|-------|------|-------------|----------|
+|`type` |string |SELinux type the service runs as, in place of `ext_t`.<br>`ext_t` and `ext_privileged_t` come with the base policy, any other is declared by a SELinuxPolicyConfig<br>document with the `ext_domain` or `ext_privileged_domain` macro. The service waits for the type to be defined<br>in the loaded policy before it starts: `talosctl service ext-<name>` says so. <details><summary>Show example(s)</summary>{{< highlight yaml >}}
+type: ext_privileged_t
+{{< /highlight >}}</details> | |
 
 
 

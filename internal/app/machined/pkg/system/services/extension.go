@@ -5,6 +5,7 @@
 package services
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +14,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/containerd/containerd/api/types/runc/options"
+	containerdclient "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/core/containers"
 	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/containerd/containerd/v2/plugins"
 	"github.com/cosi-project/runtime/pkg/safe"
 	"github.com/cosi-project/runtime/pkg/state"
 	"github.com/hashicorp/go-envparse"
@@ -30,6 +34,9 @@ import (
 	"github.com/siderolabs/talos/internal/pkg/capability"
 	"github.com/siderolabs/talos/internal/pkg/environment"
 	"github.com/siderolabs/talos/internal/pkg/mount/v3"
+	"github.com/siderolabs/talos/internal/pkg/selinux"
+	"github.com/siderolabs/talos/internal/pkg/selinux/extgen"
+	"github.com/siderolabs/talos/internal/pkg/selinux/fcontext"
 	"github.com/siderolabs/talos/pkg/conditions"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	extservices "github.com/siderolabs/talos/pkg/machinery/extensions/services"
@@ -58,14 +65,15 @@ func (svc *Extension) PreFunc(ctx context.Context, r runtime.Runtime) error {
 		return nil
 	}
 
-	// re-mount service rootfs as overlay rw mount to allow containerd to mount there /dev, /proc, etc.
+	// re-mount service rootfs as overlay rw mount to allow containerd to mount there /dev, /proc, etc.;
+	// one SELinux type for the files of the image and the entries containerd creates, whatever the image labels
 	rootfsPath := filepath.Join(constants.ExtensionServiceRootfsPath, svc.Spec.Name)
 
-	// TODO: label system extensions
 	overlay := mount.NewSystemOverlay(
 		[]string{rootfsPath},
 		rootfsPath,
 		nil,
+		mount.WithSelinuxContext(selinux.FileLabel(constants.SELinuxTypeExtensionRootfs)),
 	)
 
 	if _, err := overlay.Mount(); err != nil {
@@ -197,11 +205,30 @@ func (svc *Extension) Condition(r runtime.Runtime) conditions.Condition {
 		}
 	}
 
+	// the modules of the machine config, which may declare the type of the service, are compiled, loaded or rejected
+	// before the service starts; a type the machine config selects is waited for, so that the service starts by itself
+	// once a module declares it
+	if selinux.IsEnabled() && svc.Spec.RunnerMode != extservices.RunnerModeHost {
+		conds = append(conds, svc.selinuxCondition(r))
+	}
+
 	if len(conds) == 0 {
 		return nil
 	}
 
 	return conditions.WaitForAll(conds...)
+}
+
+// selinuxCondition waits for the modules of the machine config and for the type it selects, if any.
+func (svc *Extension) selinuxCondition(r runtime.Runtime) *runtimeres.SELinuxPolicyCondition {
+	st := r.State().V1Alpha2().Resources()
+	condition := runtimeres.NewSELinuxPolicyCondition(st, func() []string { return configSELinuxModules(r.Config()) })
+
+	if configSpec, err := safe.StateGetByID[*runtimeres.ExtensionServiceConfig](context.Background(), st, svc.Spec.Name); err == nil && configSpec.TypedSpec().SELinuxType != "" {
+		condition = condition.WithType(configSpec.TypedSpec().SELinuxType, func(typ string) bool { return selinux.CheckContext(selinux.Label(typ)) == nil })
+	}
+
+	return condition
 }
 
 // DependsOn implements the Service interface.
@@ -233,7 +260,6 @@ func (svc *Extension) getOCIOptions(envVars []string, mounts []specs.Mount) []oc
 		oci.WithMounts(mounts),
 		oci.WithHostNamespace(specs.NetworkNamespace),
 		oci.WithHostNamespace(specs.IPCNamespace),
-		oci.WithSelinuxLabel(""),
 		oci.WithApparmorProfile(""),
 		oci.WithCapabilities(capability.AllGrantableCapabilities()),
 		oci.WithAllDevicesAllowed,
@@ -277,9 +303,13 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 
 	mounts := append([]specs.Mount{}, svc.Spec.Container.Mounts...)
 
+	var config runtimeres.ExtensionServiceConfigSpec
+
 	configSpec, err := safe.StateGetByID[*runtimeres.ExtensionServiceConfig](context.Background(), r.State().V1Alpha2().Resources(), svc.Spec.Name)
 	if err == nil {
-		mounts, envVars, err = svc.applyExtensionServiceConfig(configSpec.TypedSpec(), mounts, envVars)
+		config = *configSpec.TypedSpec()
+
+		mounts, envVars, err = svc.applyExtensionServiceConfig(&config, mounts, envVars)
 		if err != nil {
 			return nil, err
 		}
@@ -349,6 +379,14 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 
 	ociSpecOpts := svc.getOCIOptions(envVars, mounts)
 
+	typ := cmp.Or(config.SELinuxType, constants.SELinuxTypeExtension)
+
+	if selinux.IsEnabled() {
+		if err = svc.confine(typ); err != nil {
+			return nil, err
+		}
+	}
+
 	return restart.New(
 		containerd.NewRunner(
 			logToConsole,
@@ -358,11 +396,56 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 			runner.WithContainerdAddress(constants.SystemContainerdAddress),
 			runner.WithEnv(environment.Get(r.Config())),
 			runner.WithOCISpecOpts(ociSpecOpts...),
+			// no session keyring: a keyring would keep the type of the service after the type left the policy
+			runner.WithContainerOpts(containerdclient.WithRuntime(plugins.RuntimeRuncV2, &options.Options{NoNewKeyring: true})),
 			runner.WithCgroupPath(filepath.Join(constants.CgroupExtensions, svc.Spec.Name)),
 			runner.WithOOMScoreAdj(-600),
+			runner.WithSelinuxLabel(selinux.Label(typ)),
 		),
 		restart.WithType(restartType),
 	), nil
+}
+
+// confine checks the type of the service against the loaded policy and labels its state directories.
+func (svc *Extension) confine(typ string) error {
+	if err := selinux.CheckContext(selinux.Label(typ)); err != nil {
+		return fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
+	}
+
+	for _, mount := range svc.Spec.Container.Mounts {
+		var stateType string
+
+		switch extgen.StateKind(mount.Source) {
+		case extgen.KindState:
+			stateType = constants.SELinuxTypeExtensionState
+		case extgen.KindRun:
+			stateType = constants.SELinuxTypeExtensionRun
+		case extgen.KindOther:
+			continue
+		}
+
+		if err := labelStateDir(mount.Source, selinux.FileLabel(stateType)); err != nil {
+			return fmt.Errorf("error labeling %q: %w", mount.Source, err)
+		}
+	}
+
+	return nil
+}
+
+// labelStateDir relabels a state directory; the directory itself is labeled last, so that its label tells the whole tree
+// carries it and a relabel interrupted is resumed at the next start.
+func labelStateDir(path, label string) error {
+	current, err := selinux.GetLabel(path)
+	if err != nil || current == label || !relabelable(current) {
+		return err
+	}
+
+	return selinux.SetLabelRecursive(path, label)
+}
+
+// relabelable reports whether a state directory carries the type of its filesystem or of a previous extension service.
+func relabelable(label string) bool {
+	return slices.Contains([]string{constants.EphemeralSelinuxLabel, constants.RunSelinuxLabel, constants.LogSELinuxLabel}, label) || strings.HasPrefix(fcontext.TypeOf(label), "ext_")
 }
 
 func (svc *Extension) hostProcessArgs(r runtime.Runtime) (runner.Args, error) {

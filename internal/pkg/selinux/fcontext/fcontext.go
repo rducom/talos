@@ -103,6 +103,16 @@ func FileTypeOf(m fs.FileMode) FileType {
 	}
 }
 
+// TypeOf returns the type of a context.
+func TypeOf(context string) string {
+	fields := strings.Split(context, ":")
+	if len(fields) < 3 {
+		return ""
+	}
+
+	return fields[2]
+}
+
 // Lookup returns the context of path for the given file type, or an empty string when no rule matches.
 //
 // As libselinux's selabel_lookup does, the last matching entry wins, and an entry whose type spec does not
