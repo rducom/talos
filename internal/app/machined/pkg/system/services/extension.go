@@ -395,7 +395,7 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 	typ := cmp.Or(config.SELinuxType, constants.SELinuxTypeExtension)
 
 	if selinux.IsEnabled() {
-		if err = svc.confine(typ); err != nil {
+		if typ, err = svc.confine(config.SELinuxType); err != nil {
 			return nil, err
 		}
 	}
@@ -419,30 +419,41 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 	), nil
 }
 
-// confine checks the type of the service against the loaded policy and labels its state directories.
-func (svc *Extension) confine(typ string) error {
-	if err := selinux.CheckContext(selinux.Label(typ)); err != nil {
-		return fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
+// confine returns the type the service runs as, the one the machine config selects, else the one the imager derived
+// from its spec, checked against the loaded policy; it labels the state directories with the types of the module, else
+// with the shared ones.
+func (svc *Extension) confine(configured string) (string, error) {
+	module, err := extgen.ReadModule(selinux.ExtensionModulesDir, svc.Spec.Name)
+	if err != nil {
+		return "", fmt.Errorf("error reading the SELinux module of the service: %w", err)
+	}
+
+	typ, labels := extgen.ResolvedType(configured, module)
+
+	if err = selinux.CheckContext(selinux.Label(typ)); err != nil {
+		return "", fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
 	}
 
 	for _, mount := range svc.Spec.Container.Mounts {
-		var stateType string
+		stateType := labels[extgen.Normalize(mount.Source)]
 
-		switch extgen.StateKind(mount.Source) {
-		case extgen.KindState:
-			stateType = constants.SELinuxTypeExtensionState
-		case extgen.KindRun:
-			stateType = constants.SELinuxTypeExtensionRun
-		case extgen.KindOther:
-			continue
+		if stateType == "" {
+			switch extgen.StateKind(mount.Source) {
+			case extgen.KindState:
+				stateType = constants.SELinuxTypeExtensionState
+			case extgen.KindRun:
+				stateType = constants.SELinuxTypeExtensionRun
+			case extgen.KindOther:
+				continue
+			}
 		}
 
-		if err := labelStateDir(mount.Source, selinux.FileLabel(stateType)); err != nil {
-			return fmt.Errorf("error labeling %q: %w", mount.Source, err)
+		if err = labelStateDir(mount.Source, selinux.FileLabel(stateType)); err != nil {
+			return "", fmt.Errorf("error labeling %q: %w", mount.Source, err)
 		}
 	}
 
-	return nil
+	return typ, nil
 }
 
 // labelStateDir relabels a state directory; the directory itself is labeled last, so that its label tells the whole tree

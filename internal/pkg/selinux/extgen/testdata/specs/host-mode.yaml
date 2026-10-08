@@ -1,0 +1,6 @@
+# A service in host runner mode gets no module.
+name: host-mode
+runnerMode: host
+container:
+  entrypoint: /usr/local/bin/hostd
+restart: always

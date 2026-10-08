@@ -72,8 +72,8 @@ func (ServiceSELinux) Doc() *encoder.Doc {
 				Name:        "type",
 				Type:        "string",
 				Note:        "",
-				Description: "SELinux type the service runs as, in place of `ext_t`.\nIt must be a type of the loaded policy, such as `ext_privileged_t`, which reaches the devices, the mounts\nand the machined socket of the host. A service does not start with a type the policy does not define:\n`talosctl service ext-<name>` says so.",
-				Comments:    [3]string{"" /* encoder.HeadComment */, "SELinux type the service runs as, in place of `ext_t`." /* encoder.LineComment */, "" /* encoder.FootComment */},
+				Description: "SELinux type the service runs as, in place of the type the imager derives from the service spec.\nIt must be a type of the loaded policy, such as `ext_privileged_t`, which reaches the devices, the mounts\nand the machined socket of the host. A service does not start with a type the policy does not define:\n`talosctl service ext-<name>` says so.\nThe state directories keep the types derived from the spec, `ext_<name>_state_t` and `ext_<name>_run_t`:\n`ext_t` and `ext_privileged_t` reach the state of every service, a derived type its own only.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "SELinux type the service runs as, in place of the type the imager derives from the service spec." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 		},
 	}

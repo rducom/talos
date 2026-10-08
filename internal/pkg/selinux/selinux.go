@@ -8,6 +8,8 @@ package selinux
 import (
 	"bytes"
 	_ "embed"
+	"errors"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -32,6 +34,15 @@ const CommitPendingBoolsPath = "/sys/fs/selinux/commit_pending_bools"
 
 //go:embed policy/policy.33
 var policy []byte
+
+const (
+	// PolicyDir holds the sources of the policy, which the imager compiles the modules of the extension services with.
+	PolicyDir = "/usr/share/selinux/talos"
+	// ExtensionModulesDir holds the modules the imager derived from the specs of the extension services.
+	ExtensionModulesDir = PolicyDir + "/extensions"
+	// ImagePolicy is the policy the imager compiled from the sources with the modules of the extension services.
+	ImagePolicy = PolicyDir + "/policy.33"
+)
 
 // FileContexts is the file_contexts of the policy the image build compiled from the same sources.
 //
@@ -251,11 +262,27 @@ func Init() error {
 
 	log.Println("selinux: loading policy")
 
-	if err := os.WriteFile("/sys/fs/selinux/load", policy, 0o777); err != nil {
+	boot, err := BootPolicy(ImagePolicy)
+	if err != nil {
+		return err
+	}
+
+	if err = os.WriteFile("/sys/fs/selinux/load", boot, 0o777); err != nil {
 		return err
 	}
 
 	log.Println("selinux: policy loaded")
 
 	return nil
+}
+
+// BootPolicy returns the policy init loads: the one the imager compiled at path with the modules of the extension services,
+// or the base policy when the image carries no extension service.
+func BootPolicy(path string) ([]byte, error) {
+	image, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return policy, nil
+	}
+
+	return image, err
 }

@@ -679,6 +679,8 @@ description: Talos gRPC API reference.
     - [PlatformMetadataSpec.TagsEntry](#talos.resource.definitions.runtime.PlatformMetadataSpec.TagsEntry)
     - [SBOMItemSpec](#talos.resource.definitions.runtime.SBOMItemSpec)
     - [SELinuxBooleanStatusSpec](#talos.resource.definitions.runtime.SELinuxBooleanStatusSpec)
+    - [SELinuxModuleSpec](#talos.resource.definitions.runtime.SELinuxModuleSpec)
+    - [SELinuxModuleSpec.LabelsEntry](#talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry)
     - [SecurityStateSpec](#talos.resource.definitions.runtime.SecurityStateSpec)
     - [ServicePIDSpec](#talos.resource.definitions.runtime.ServicePIDSpec)
     - [UnattendedInstallStatusSpec](#talos.resource.definitions.runtime.UnattendedInstallStatusSpec)
@@ -11812,6 +11814,40 @@ SELinuxBooleanStatusSpec describes the SELinuxBooleanStatus resource.
 | default | [bool](#bool) |  | Default is the value of the boolean when the policy was loaded. |
 | configured | [bool](#bool) |  | Configured is true when the machine config sets the boolean. |
 | unknown | [bool](#bool) |  | Unknown is true when the machine config sets a boolean the loaded policy does not define. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.runtime.SELinuxModuleSpec"></a>
+
+### SELinuxModuleSpec
+SELinuxModuleSpec describes the SELinuxModule resource.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| content | [string](#string) |  | Content is the module in CIL. |
+| labels | [SELinuxModuleSpec.LabelsEntry](#talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry) | repeated | Labels are the types machined gives the state directories of the service, by mount source. |
+| warnings | [string](#string) | repeated | Warnings lists what could not be derived from the service spec. |
+| type | [string](#string) |  | Type is the domain the module declares for the service. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry"></a>
+
+### SELinuxModuleSpec.LabelsEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
 
 
 

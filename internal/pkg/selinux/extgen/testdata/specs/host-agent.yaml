@@ -1,0 +1,14 @@
+# A host agent: the machined socket and /sbin/init as the client binary of the API.
+name: host-agent
+container:
+  entrypoint: /usr/local/bin/host-agent
+  mounts:
+    - source: /system/run/machined/machine.sock
+      destination: /system/run/machined/machine.sock
+      type: bind
+      options: [bind, rw]
+    - source: /sbin/init
+      destination: /sbin/init
+      type: bind
+      options: [bind, ro]
+restart: always

@@ -1,0 +1,5 @@
+# No mount, no option: the domain and nothing else.
+name: minimal
+container:
+  entrypoint: /minimal
+restart: always

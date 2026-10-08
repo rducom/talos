@@ -277,6 +277,18 @@ message SELinuxBooleanStatusSpec {
   bool unknown = 4;
 }
 
+// SELinuxModuleSpec describes the SELinuxModule resource.
+message SELinuxModuleSpec {
+  // Content is the module in CIL.
+  string content = 1;
+  // Labels are the types machined gives the state directories of the service, by mount source.
+  map<string, string> labels = 2;
+  // Warnings lists what could not be derived from the service spec.
+  repeated string warnings = 3;
+  // Type is the domain the module declares for the service.
+  string type = 4;
+}
+
 // SecurityStateSpec describes the security state resource properties.
 message SecurityStateSpec {
   bool secure_boot = 1;
