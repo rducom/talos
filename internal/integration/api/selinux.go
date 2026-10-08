@@ -950,6 +950,244 @@ func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 	})
 }
 
+// TestExtensionServiceAudit audits an extension service in container mode until its usual accesses are seen, then runs it
+// in the module narrowed to the exercised permissions, without a denial.
+//
+//nolint:gocyclo
+func (suite *SELinuxSuite) TestExtensionServiceAudit() {
+	node := suite.RandomDiscoveredNodeInternalIP()
+	nodeCtx := client.WithNode(suite.ctx, node)
+
+	name, pid := suite.containerExtensionService(nodeCtx)
+	id, typ := "ext-"+name, extgen.TypeName(name)
+
+	cfg := extensions.NewServicesConfigV1Alpha1()
+	cfg.ServiceName = name
+	cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxAudit: true}
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+
+	// the first round audits every access the policy grants
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, typ, func(status *runtimeres.SELinuxDomainStatus, asrt *assert.Assertions) {
+		asrt.False(status.TypedSpec().ObservedSince.IsZero())
+		asrt.GreaterOrEqual(status.TypedSpec().Rounds, uint32(1))
+		asrt.NotEmpty(status.TypedSpec().Unexercised)
+	})
+
+	// the service restarts with the audit module loaded, so that its startup path is observed
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+
+	_, err := suite.Client.ServiceRestart(nodeCtx, id)
+	suite.Require().NoError(err)
+
+	suite.extensionServicePID(nodeCtx, id, pid)
+
+	// the exercised accesses settle once the usual ones are seen
+	var exercised, stable int
+
+	suite.Require().NoError(retry.Constant(5*time.Minute, retry.WithUnits(10*time.Second)).Retry(func() error {
+		status, err := safe.StateGetByID[*runtimeres.SELinuxDomainStatus](nodeCtx, suite.Client.COSI, typ)
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		if len(status.TypedSpec().Exercised) != exercised {
+			exercised, stable = len(status.TypedSpec().Exercised), 0
+		} else {
+			stable++
+		}
+
+		if exercised == 0 || stable < 3 {
+			return retry.ExpectedErrorf("%d accesses exercised, stable %d times", exercised, stable)
+		}
+
+		return nil
+	}))
+
+	// the observed accesses leave the audit module at the next round, a minute after the first one at least
+	var status *runtimeres.SELinuxDomainStatus
+
+	suite.Require().NoError(retry.Constant(3*time.Minute, retry.WithUnits(5*time.Second)).Retry(func() error {
+		status, err = safe.StateGetByID[*runtimeres.SELinuxDomainStatus](nodeCtx, suite.Client.COSI, typ)
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		if status.TypedSpec().Rounds < 2 {
+			return retry.ExpectedErrorf("round %d", status.TypedSpec().Rounds)
+		}
+
+		return nil
+	}))
+
+	suite.Assert().NotEmpty(status.TypedSpec().Exercised)
+	suite.Assert().Contains(status.TypedSpec().NarrowedModule, "(call ext_plumbing ("+typ+"))")
+	// the service restarted during the audit: its start was observed
+	suite.Assert().NotContains(status.TypedSpec().NarrowedModule, "; not started since")
+
+	// the narrowed module, under a name of its own, runs the service without a denial
+	narrowed := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("narrowed")
+	narrowed.PolicyContent = strings.ReplaceAll(status.TypedSpec().NarrowedModule, typ, "ext_narrowed_t")
+
+	suite.PatchMachineConfig(nodeCtx, narrowed)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "narrowed")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Modules, "config-narrowed")
+		asrt.Empty(status.TypedSpec().Error)
+	})
+
+	before := suite.denials(node, "ext_narrowed_t")
+
+	// the document is replaced, a patch could not clear the audit flag
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+
+	cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxType: "ext_narrowed_t"}
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+	suite.Assert().Equal(selinuxLabel("ext_narrowed_t"), suite.getLabel(nodeCtx, pid))
+
+	// the audit stops with the flag
+	rtestutils.AssertNoResource[*runtimeres.SELinuxDomainStatus](nodeCtx, suite.T(), suite.Client.COSI, typ)
+
+	time.Sleep(30 * time.Second)
+
+	suite.Assert().Equal(before, suite.denials(node, "ext_narrowed_t"))
+
+	// the service leaves the type before its module goes: a type removed while in use leaves the kernel objects unlabeled
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+	suite.extensionServicePID(nodeCtx, id, pid)
+}
+
+// TestPodDomainAudit audits a pod domain of a module until a process monitor pod has exercised its accesses, then runs
+// the same pod in the module narrowed to them, on the pod plumbing, without a denial on either side.
+//
+//nolint:gocyclo
+func (suite *SELinuxSuite) TestPodDomainAudit() {
+	ip, nodeName := suite.labelingNode(true)
+	nodeCtx := client.WithNode(suite.ctx, ip)
+
+	audited := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("audited")
+	audited.PolicyContent = "(type pod_audited_t)\n(call pod_hostmon_domain (pod_audited_t))\n"
+	audited.PolicyAudit = true
+
+	suite.PatchMachineConfig(nodeCtx, audited)
+
+	// the pods leave the types before their modules go
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "audited")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, "pod_audited_t", func(status *runtimeres.SELinuxDomainStatus, asrt *assert.Assertions) {
+		asrt.GreaterOrEqual(status.TypedSpec().Rounds, uint32(1))
+		// nothing ran in the domain yet
+		asrt.Contains(status.TypedSpec().NarrowedModule, "; not started since")
+	})
+
+	const exercise = "for p in /proc/[0-9]*; do cat $p/stat $p/comm; ls $p/task; readlink $p/exe; done >/dev/null 2>&1; cat /proc/1/comm"
+
+	monitor := func(name, typ string) podRunner {
+		podDef, err := suite.NewPod(name)
+		suite.Require().NoError(err)
+
+		podDef = podDef.WithQuiet(true).WithNamespace("kube-system").WithNodeName(nodeName).WithHostPID().WithSELinuxOptions(&corev1.SELinuxOptions{Type: typ})
+
+		suite.Require().NoError(podDef.Create(suite.ctx, 5*time.Minute))
+
+		_, _, err = podDef.Exec(suite.ctx, exercise)
+		suite.Require().NoError(err)
+
+		return podDef
+	}
+
+	podDef := monitor("selinux-audited", "pod_audited_t")
+	defer suite.deletePod(podDef)
+
+	// the pod exercises its accesses again after every reload of the audit module and every record the audit log drops,
+	// which a busy node does by the hundred thousand: the narrowed module has settled once neither happened for a minute
+	// after an exercise, the interval between two rounds
+	var (
+		module string
+		round  uint32
+		lost   uint64
+		quiet  int
+	)
+
+	suite.Require().NoError(retry.Constant(6*time.Minute, retry.WithUnits(10*time.Second)).Retry(func() error {
+		status, err := safe.StateGetByID[*runtimeres.SELinuxDomainStatus](nodeCtx, suite.Client.COSI, "pod_audited_t")
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		if spec := status.TypedSpec(); spec.Rounds != round || spec.LostRecords != lost {
+			if _, _, err = podDef.Exec(suite.ctx, exercise); err != nil {
+				return retry.ExpectedError(err)
+			}
+
+			round, lost, quiet = spec.Rounds, spec.LostRecords, 0
+
+			return retry.ExpectedErrorf("exercised again at round %d, %d records dropped", round, lost)
+		}
+
+		module = status.TypedSpec().NarrowedModule
+
+		if quiet++; quiet < 7 {
+			return retry.ExpectedErrorf("quiet for %d looks", quiet)
+		}
+
+		return nil
+	}))
+
+	suite.Assert().Contains(module, "(call pod_plumbing (pod_audited_t))")
+	suite.Assert().Contains(module, "(typeattributeset mcs_read_exempt_p pod_audited_t)")
+	suite.Assert().NotContains(module, "; not started since")
+
+	suite.deletePod(podDef)
+
+	// the narrowed module, under a name of its own, runs the same pod without a denial, as a subject or as a target
+	narrowed := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("pod-narrowed")
+	narrowed.PolicyContent = strings.ReplaceAll(module, "pod_audited_t", "pod_narrowed_t")
+
+	suite.PatchMachineConfig(nodeCtx, narrowed)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "pod-narrowed")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.COSI, runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Loaded, "config-pod-narrowed")
+	})
+
+	before, beforeTarget := suite.denials(ip, "pod_narrowed_t"), suite.targetDenials(ip, "pod_narrowed_t")
+
+	narrowedPod := monitor("selinux-narrowed", "pod_narrowed_t")
+	suite.deletePod(narrowedPod)
+
+	suite.Assert().Equal(before, suite.denials(ip, "pod_narrowed_t"))
+	suite.Assert().Equal(beforeTarget, suite.targetDenials(ip, "pod_narrowed_t"))
+}
+
+// targetDenials counts the denials of the audit log on a domain as the target, the accesses of the kubelet and of other
+// pods to its /proc entries for instance.
+func (suite *SELinuxSuite) targetDenials(node, target string) int {
+	stream, err := suite.Client.Logs(client.WithNode(suite.ctx, node), constants.SystemContainerdNamespace, common.ContainerDriver_CONTAINERD, "auditd", false, -1)
+	suite.Require().NoError(err)
+
+	return strings.Count(suite.readStream(stream), " tcontext=system_u:system_r:"+target+":")
+}
+
+// deletePod deletes a pod gracefully and waits for it to be gone, which the kubelet completes once the containers have
+// stopped: a module can go then without leaving a process in a type the policy no longer has, which nothing may signal.
+func (suite *SELinuxSuite) deletePod(pod podRunner) {
+	pods := corev1.SchemeGroupVersion.WithResource("pods")
+
+	suite.Require().NoError(suite.DeleteResource(suite.ctx, pods, "kube-system", pod.Name()))
+	suite.Require().NoError(suite.EnsureResourceIsDeleted(suite.ctx, time.Minute, pods, "kube-system", pod.Name()))
+}
+
 func selinuxLabel(typ string) string {
 	return "system_u:system_r:" + typ + ":s0"
 }
