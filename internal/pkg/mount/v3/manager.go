@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/siderolabs/talos/internal/pkg/selinux"
 	"github.com/siderolabs/talos/pkg/xfs"
 	"github.com/siderolabs/talos/pkg/xfs/fsopen"
 	"github.com/siderolabs/talos/pkg/xfs/opentree"
@@ -20,10 +21,14 @@ import (
 type Manager struct {
 	fs xfs.FS
 
+	fstype     string
+	fsopenOpts []fsopen.Option
+
 	target  string
 	printer func(string, ...any)
 
 	selinuxLabel          string
+	selinuxContext        string
 	shared                bool
 	skipIfMounted         bool
 	keepOpen              bool
@@ -43,6 +48,14 @@ func NewManager(opts ...ManagerOption) *Manager {
 
 	for _, opt := range opts {
 		opt.set(m)
+	}
+
+	if m.fstype != "" {
+		if m.selinuxContext != "" && selinux.IsEnabled() {
+			m.fsopenOpts = append(m.fsopenOpts, fsopen.WithStringParameter("context", m.selinuxContext))
+		}
+
+		m.fs = fsopen.New(m.fstype, m.fsopenOpts...)
 	}
 
 	return m
@@ -151,11 +164,21 @@ func WithKeepOpenAfterMount() ManagerOption {
 	}
 }
 
-// WithSelinuxLabel sets the mount SELinux label.
+// WithSelinuxLabel sets the SELinux label of the mount point.
 func WithSelinuxLabel(label string) ManagerOption {
 	return ManagerOption{
 		set: func(m *Manager) {
 			m.selinuxLabel = label
+		},
+	}
+}
+
+// WithSelinuxContext mounts the filesystem with the SELinux context: every inode carries it, whatever the labels of
+// the backing filesystems, and nothing relabels them. Applies to WithFsopen filesystems when SELinux is enabled.
+func WithSelinuxContext(label string) ManagerOption {
+	return ManagerOption{
+		set: func(m *Manager) {
+			m.selinuxContext = label
 		},
 	}
 }
@@ -191,7 +214,7 @@ func WithSkipIfMounted() ManagerOption {
 func WithFsopen(fstype string, opts ...fsopen.Option) ManagerOption {
 	return ManagerOption{
 		set: func(m *Manager) {
-			m.fs = fsopen.New(fstype, opts...)
+			m.fstype, m.fsopenOpts = fstype, opts
 		},
 	}
 }

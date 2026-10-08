@@ -130,6 +130,49 @@ func TestPolicy(t *testing.T) {
 			"(neverallow init_t self (system (kexec_image_load kexec_initramfs_load)))\n",
 			"neverallow check failed",
 		},
+		{
+			"extension domains built on the macros",
+			"(type ext_custom_t)\n(call ext_domain (ext_custom_t))\n(type ext_wide_t)\n(call ext_privileged_domain (ext_wide_t))\n" +
+				"(type ext_custom_state_t)\n(call ext_state_f (ext_custom_state_t))\n(allow ext_custom_t ext_custom_state_t (fs_classes (rw)))\n",
+			"",
+		},
+		{
+			"STATE stays out of reach of every extension domain",
+			"(type ext_evil_t)\n(call ext_domain (ext_evil_t))\n(allow ext_evil_t system_state_t (fs_classes (ro)))\n",
+			"neverallow check failed",
+		},
+		{
+			"no pod reads the state of an extension, privileged or not",
+			"(neverallow pod_p ext_state_t (file (read)))\n(neverallow pod_p ext_run_t (file (read)))\n",
+			"",
+		},
+		{
+			"the system containerd prepares the rootfs of a service, the service executes from it and does not write it",
+			"(neverallow ext_t ext_rootfs_t (file (write)))\n(neverallow pod_p ext_rootfs_t (file (read)))\n" +
+				"(neverallow sys_containerd_t ext_rootfs_t (dir (write)))\n",
+			"neverallow check failed",
+		},
+		{
+			"machined mounts the rootfs: a service uses the files overlayfs opens with the credentials of machined",
+			"(neverallow ext_t init_t (fd (use)))\n",
+			"neverallow check failed",
+		},
+		{
+			"the entrypoint of a service may be a binary of the host its spec mounts",
+			"(neverallow ext_t usr_t (file (entrypoint)))\n",
+			"neverallow check failed",
+		},
+		{
+			"the default extension profile reaches the state of the services",
+			"(neverallow ext_t ext_state_t (file (write)))\n",
+			"neverallow check failed",
+		},
+		{
+			"the base profiles reach the state of every service through the attribute, a derived type its own only",
+			"(type ext_x_state_t)\n(call ext_state_f (ext_x_state_t))\n(type ext_y_t)\n(call ext_domain (ext_y_t))\n" +
+				"(neverallow ext_y_t ext_x_state_t (file (read)))\n(neverallow ext_privileged_t ext_x_state_t (file (read)))\n",
+			"neverallow check failed",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			output, err := compile(t, test.statements)
