@@ -410,8 +410,8 @@ func (suite *SELinuxSuite) denials(node, subject string) int {
 
 var kubeletPluginDirs = []string{"/var/lib/kubelet/plugins", "/var/lib/kubelet/plugins_registry", "/var/lib/kubelet/device-plugins"}
 
-// podDomains are the workload domains of the base policy.
-var podDomains = []string{"pod_t", "pod_privileged_t"}
+// podDomains are the workload domains of the base policy and of the modules in hack/test/patches/selinux-workloads.yaml.
+var podDomains = []string{"pod_t", "pod_privileged_t", "pod_hostmon_t", "pod_cni_t"}
 
 // criLabelsContainers reports whether the node's CRI labels containers, which the kubelet mounts reflect.
 func (suite *SELinuxSuite) criLabelsContainers(nodeCtx context.Context) bool {
@@ -479,6 +479,7 @@ func (suite *SELinuxSuite) TestPodDomains() {
 	}{
 		{name: "selinux-pod", label: `^system_u:system_r:pod_t:s0:c\d+,c\d+$`},
 		{name: "selinux-privileged", privileged: true, label: `^system_u:system_r:pod_privileged_t:s0$`},
+		{name: "selinux-hostmon", options: &corev1.SELinuxOptions{Type: "pod_hostmon_t"}, label: `^system_u:system_r:pod_hostmon_t:s0:c\d+,c\d+$`},
 		{name: "selinux-spc", options: &corev1.SELinuxOptions{Type: "spc_t", Level: "s0"}, label: `^system_u:system_r:pod_privileged_t:s0$`},
 		{name: "selinux-unknown", options: &corev1.SELinuxOptions{Type: "unknown_t"}},
 		{name: "selinux-kubelet", options: &corev1.SELinuxOptions{Type: "kubelet_t"}, enforcing: true},
@@ -512,7 +513,7 @@ func (suite *SELinuxSuite) TestPodDomains() {
 }
 
 // TestPodMCSIsolation checks the MCS categories on a hostPath: a pod reads the files of another pod only at the same
-// fixed level, which outlives the pods.
+// fixed level, which outlives the pods, and a process monitor reads them all without writing any.
 func (suite *SELinuxSuite) TestPodMCSIsolation() {
 	_, node := suite.labelingNode(true)
 
@@ -527,6 +528,8 @@ func (suite *SELinuxSuite) TestPodMCSIsolation() {
 	}{
 		{"selinux-mcs-writer", nil, "echo secret > " + file + " && echo written", "written\n"},
 		{"selinux-mcs-reader", nil, "cat " + file, ""},
+		{"selinux-mcs-hostmon", &corev1.SELinuxOptions{Type: "pod_hostmon_t"}, "cat " + file, "secret\n"},
+		{"selinux-mcs-tamper", &corev1.SELinuxOptions{Type: "pod_hostmon_t"}, "echo tampered >> " + file, ""},
 		{"selinux-level-first", &corev1.SELinuxOptions{Level: "s0:c600,c601"}, "echo secret > " + file + "-fixed && echo written", "written\n"},
 		{"selinux-level-second", &corev1.SELinuxOptions{Level: "s0:c600,c601"}, "cat " + file + "-fixed", "secret\n"},
 		{"selinux-level-other", &corev1.SELinuxOptions{Level: "s0:c602,c603"}, "cat " + file + "-fixed", ""},
@@ -584,22 +587,30 @@ func (suite *SELinuxSuite) TestPrivilegedHostAccess() {
 }
 
 // TestPodProcAccess reads the /proc of every host process from a pod sharing the host PID namespace: pod_t is denied and
-// the denial audited.
+// the denial audited, a process monitor and a module domain built on pod_privileged_domain are not.
 func (suite *SELinuxSuite) TestPodProcAccess() {
 	ip, node := suite.labelingNode(true)
 
 	for _, test := range []struct {
-		domain  string
-		command string
-		want    string // a regexp the output matches, empty when the command must be denied and audited
+		domain       string
+		capabilities []corev1.Capability
+		command      string
+		want         string // a regexp the output matches, empty when the command must be denied and audited
 	}{
 		// the shell glob drops the entries it cannot search, hence the explicit loop
 		{domain: "pod_t", command: "rc=0; for p in $(ls /proc | grep -E '^[0-9]+$'); do cat /proc/$p/comm >/dev/null || rc=1; done; exit $rc"},
+		// readlink of /proc/1/exe needs CAP_SYS_PTRACE on a non-dumpable process, a DAC check with no AVC record
+		{domain: "pod_hostmon_t", command: "for p in /proc/[0-9]*; do cat $p/stat $p/comm; ls $p/task; readlink $p/exe; done >/dev/null 2>&1; cat /proc/1/comm", want: `\S`},
+		// lvm also probes /dev/mapper/control, which the device cgroup of a non-privileged container refuses
+		{
+			domain: "pod_cni_t", capabilities: []corev1.Capability{"SYS_ADMIN", "SYS_PTRACE", "SYS_CHROOT"},
+			command: "cat /proc/self/attr/current; nsenter -t 1 -m -- /usr/bin/lvm version", want: `(?s)^system_u:system_r:pod_cni_t:s0:c\d+,c\d+.*LVM version`,
+		},
 	} {
 		podDef, err := suite.NewPod("selinux-proc-" + strings.ReplaceAll(test.domain, "_", "-"))
 		suite.Require().NoError(err)
 
-		pod := podDef.WithQuiet(true).WithNamespace("kube-system").WithNodeName(node).WithHostPID().
+		pod := podDef.WithQuiet(true).WithNamespace("kube-system").WithNodeName(node).WithHostPID().WithCapabilities(test.capabilities...).
 			WithSELinuxOptions(&corev1.SELinuxOptions{Type: test.domain})
 
 		before := suite.denials(ip, test.domain)
