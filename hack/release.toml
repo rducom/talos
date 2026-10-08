@@ -202,6 +202,12 @@ the policy sources and `secilc` in `/usr/share/selinux/talos`.
         description = """\
 The imager now labels the files of system extensions with the `file_contexts` of the Talos rootfs, so that an extension
 binary, kernel module or CRI runtime handler carries the same SELinux label as if it were part of the rootfs.
+
+Extension services in container mode run as `ext_t`, a domain of their own, in place of `unconfined_container_t`, and the
+state directories they mount from `/var` and `/run` are labeled `ext_state_t` and `ext_run_t`, which no pod reads.
+The new `selinux.type` field of `ExtensionServiceConfig` selects another type, `ext_privileged_t` for a service which needs
+the devices, the mounts and the machined socket of the host, or a type declared by a `SELinuxPolicyConfig` document
+with the `ext_domain` macro; the service waits for a type no module declares yet.
 """
 
     [notes.kubespan_peer_endpoint_filters]

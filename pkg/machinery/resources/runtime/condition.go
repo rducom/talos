@@ -189,10 +189,13 @@ func (condition *APIServiceConfigCondition) Wait(ctx context.Context) error {
 	return err
 }
 
-// SELinuxPolicyCondition implements condition which waits for the SELinux policy modules of the machine config to be compiled, loaded or rejected.
+// SELinuxPolicyCondition implements condition which waits for the SELinux policy modules of the machine config to be compiled, loaded or rejected,
+// and for a type to be defined in the loaded policy.
 type SELinuxPolicyCondition struct {
 	state   state.State
 	modules func() []string
+	typ     string
+	defined func(typ string) bool
 }
 
 // NewSELinuxPolicyCondition builds a condition which waits for the SELinux policy modules to be reconciled; the modules
@@ -204,8 +207,22 @@ func NewSELinuxPolicyCondition(state state.State, modules func() []string) *SELi
 	}
 }
 
+// WithType makes the condition wait for the type to be defined in the loaded policy, checked whenever the policy
+// status changes.
+func (condition *SELinuxPolicyCondition) WithType(typ string, defined func(typ string) bool) *SELinuxPolicyCondition {
+	condition.typ, condition.defined = typ, defined
+
+	return condition
+}
+
 func (condition *SELinuxPolicyCondition) String() string {
-	return "selinux policy modules " + strings.Join(condition.modules(), ", ")
+	description := "selinux policy modules " + strings.Join(condition.modules(), ", ")
+
+	if condition.typ != "" {
+		description += ", selinux type " + condition.typ
+	}
+
+	return description
 }
 
 // Wait implements condition interface.
@@ -220,7 +237,11 @@ func (condition *SELinuxPolicyCondition) Wait(ctx context.Context) error {
 
 			status := r.(*SELinuxPolicyStatus).TypedSpec()
 
-			return !slices.ContainsFunc(condition.modules(), func(module string) bool { return !slices.Contains(status.Modules, module) }), nil
+			if slices.ContainsFunc(condition.modules(), func(module string) bool { return !slices.Contains(status.Modules, module) }) {
+				return false, nil
+			}
+
+			return condition.typ == "" || condition.defined(condition.typ), nil
 		}),
 	)
 

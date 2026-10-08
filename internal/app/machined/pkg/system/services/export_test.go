@@ -57,3 +57,6 @@ func (svc *Extension) ApplyExtensionServiceConfig(
 
 // AuthorizationRules exposes production authorization rules for external tests.
 var AuthorizationRules = rules
+
+// Relabelable exposes relabelable for tests.
+var Relabelable = relabelable

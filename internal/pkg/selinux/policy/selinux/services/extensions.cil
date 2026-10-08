@@ -1,0 +1,107 @@
+; Extension services in container mode.
+;
+; The type of a service is chosen by machined: the operator's ExtensionServiceConfig.selinux.type, else the
+; type its module derives from the service spec, else ext_t. Extensions ship no policy of their own.
+(typeattribute extension_p)
+(typeattributeset any_p extension_p)
+
+; State and runtime files of the services: machined labels the directories a spec mounts from
+; /var/{lib,log,cache,local} and /run with the types of the module derived from the spec, whatever type the
+; service runs as. protected_f, so no pod reads them, privileged or not. ext_state_a gathers every state type:
+; ext_t and ext_privileged_t reach the state of every service, a derived or narrowed type its own only.
+(typeattribute ext_state_a)
+(macro ext_state_f ((type ARG1))
+    (call protected_f (ARG1))
+    (typeattributeset ext_state_a ARG1)
+    (allow ARG1 fs_t (filesystem (associate)))
+)
+(macro ext_run_f ((type ARG1))
+    (call protected_f (ARG1))
+    (typeattributeset ext_state_a ARG1)
+    (allow ARG1 tmpfs_t (filesystem (associate)))
+)
+(type ext_state_t)
+(call ext_state_f (ext_state_t))
+(type ext_run_t)
+(call ext_run_f (ext_run_t))
+; A file a workload creates in the state of a service carries no category: the state is shared with whoever a module lets
+; in, the service first, which runs without categories, then a pod with other categories at its next start. A pod domain
+; holds every category, so it may create at s0 and read back what it wrote.
+(rangetransition workload_p ext_state_a fs_classes ((s0) (s0)))
+
+; The rootfs of a service, /usr/local/lib/containers/<name>: machined mounts the overlay the service runs from with this
+; context, so the files of the image and the entries the system containerd creates in it (mount points, /etc/hosts,
+; /etc/resolv.conf) are one type, whatever the labels of the image; its upper lives on the /system tmpfs.
+(type ext_rootfs_t)
+(call protected_f (ext_rootfs_t))
+(allow ext_rootfs_t ext_rootfs_t (filesystem (associate)))
+(allow ext_rootfs_t tmpfs_t (filesystem (associate)))
+(allow sys_containerd_t ext_rootfs_t (fs_classes (rw)))
+(allow sys_containerd_t ext_rootfs_t (file (execute)))
+
+(macro ext_domain ((type ARG1))
+    (roletype system_r ARG1)
+    (typeattributeset extension_p ARG1)
+    ; started by the system containerd, supervised by machined
+    (allow sys_containerd_t ARG1 (process (transition)))
+    (allow sys_containerd_t ARG1 (process2 (nnp_transition nosuid_transition)))
+    (allow sys_containerd_t ARG1 (fs_classes (rw)))
+    (allow sys_containerd_t ARG1 (process_classes (full)))
+    (allow ARG1 sys_containerd_t (fd (use)))
+    (allow ARG1 sys_containerd_t (fifo_file (append getattr ioctl map open read rename setattr watch write)))
+    ; machined mounts the rootfs overlay: overlayfs opens the real files with its credentials, and a dynamically
+    ; linked binary uses those files at the mprotect of its loader
+    (allow ARG1 init_t (fd (use)))
+    (allow init_t ARG1 (process (transition)))
+    (allow init_t ARG1 (process2 (nosuid_transition)))
+    ; its rootfs, prepared by the system containerd, which execs the entrypoint from sys_containerd_t
+    (allow ARG1 ext_rootfs_t (file (entrypoint execute execute_no_trans)))
+    (allow ARG1 ext_rootfs_t (fs_classes (ro)))
+    ; the binaries and libraries of the host a spec mounts; the entrypoint may be one of them (multipathd, iscsid)
+    (allow ARG1 usr_t (file (entrypoint execute execute_no_trans)))
+    (allow ARG1 usr_t (fs_classes (ro)))
+    (allow ARG1 lib_t (file (execute)))
+    (allow ARG1 lib_t (fs_classes (ro)))
+    (allow ARG1 bin_exec_t (file (execute execute_no_trans)))
+    (allow ARG1 bin_exec_t (fs_classes (ro)))
+    (allow ARG1 etc_t (fs_classes (ro)))
+    ; the config files of ExtensionServiceConfig, bind-mounted from /system/overlays; the files of every service
+    ; are system_t, a spec mounting /system would read them all
+    (allow ARG1 system_t (fs_classes (ro)))
+    ; the snapshotters and shims serve sockets to the CRI
+    (allow pod_containerd_t ARG1 (unix_stream_socket (connectto)))
+)
+(allow sys_containerd_t usr_t (file (execute)))
+
+; Default profile: an agent talking on the network, opening common devices, writing its state.
+(type ext_t)
+(call ext_domain (ext_t))
+(allow ext_t ext_state_a (fs_classes (rw)))
+
+; Wide host profile: /dev, /run, /var, /sys writable, mounts, the machined socket. Never chosen by machined,
+; an operator selects it with ExtensionServiceConfig.selinux.type.
+(macro ext_privileged_domain ((type ARG1))
+    (call ext_domain (ARG1))
+    (allow ARG1 ext_state_a (fs_classes (rw)))
+    (allow ARG1 ephemeral_t (fs_classes (rw)))
+    (allow ARG1 run_t (fs_classes (rw)))
+    (allow ARG1 system_run_t (fs_classes (ro)))
+    (allow ARG1 sysfs_t (fs_classes (rw)))
+    (allow ARG1 device_f (fs_classes (rw)))
+    (allow ARG1 udev_run_t (fs_classes (ro)))
+    ; mount and unmount on every filesystem, STATE included: what the snapshotters need; narrow it with selinux.audit
+    (allow ARG1 filesystem_f (filesystem (mount remount unmount getattr)))
+    (allow ARG1 any_f (fs_classes (mounton)))
+    (allow ARG1 cgroup_t (fs_classes (rw)))
+    (allow ARG1 nsfs_t (fs_classes (ro)))
+    (allow ARG1 kernel_t (system (ipc_info module_request)))
+    (allow ARG1 machine_socket_t (sock_file (write)))
+    (allow ARG1 init_t (unix_stream_socket (connectto)))
+)
+(type ext_privileged_t)
+(call ext_privileged_domain (ext_privileged_t))
+
+; Whatever its module grants, an extension domain never reads STATE nor ptraces a host service. The rules bind the types
+; built on the macros above; a type the machine config selects with selinux.type is the choice of the operator.
+(neverallow extension_p system_state_t (file (read write)))
+(neverallow extension_p system_p (process (ptrace)))

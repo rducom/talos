@@ -2146,6 +2146,13 @@
           "description": "The environment for the extension service.\n",
           "markdownDescription": "The environment for the extension service.",
           "x-intellij-html-description": "\u003cp\u003eThe environment for the extension service.\u003c/p\u003e\n"
+        },
+        "selinux": {
+          "$ref": "#/$defs/extensions.ServiceSELinux",
+          "title": "selinux",
+          "description": "SELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.\n",
+          "markdownDescription": "SELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.",
+          "x-intellij-html-description": "\u003cp\u003eSELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -2156,6 +2163,20 @@
         "name"
       ],
       "description": "ExtensionServiceConfig is a extensionserviceconfig document."
+    },
+    "extensions.ServiceSELinux": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "type",
+          "description": "SELinux type the service runs as, in place of ext_t.\next_t and ext_privileged_t come with the base policy, any other is declared by a SELinuxPolicyConfig\ndocument with the ext_domain or ext_privileged_domain macro. The service waits for the type to be defined\nin the loaded policy before it starts: talosctl service ext-\u0026lt;name\u0026gt; says so.\n",
+          "markdownDescription": "SELinux type the service runs as, in place of `ext_t`.\n`ext_t` and `ext_privileged_t` come with the base policy, any other is declared by a SELinuxPolicyConfig\ndocument with the `ext_domain` or `ext_privileged_domain` macro. The service waits for the type to be defined\nin the loaded policy before it starts: `talosctl service ext-\u003cname\u003e` says so.",
+          "x-intellij-html-description": "\u003cp\u003eSELinux type the service runs as, in place of \u003ccode\u003eext_t\u003c/code\u003e.\n\u003ccode\u003eext_t\u003c/code\u003e and \u003ccode\u003eext_privileged_t\u003c/code\u003e come with the base policy, any other is declared by a SELinuxPolicyConfig\ndocument with the \u003ccode\u003eext_domain\u003c/code\u003e or \u003ccode\u003eext_privileged_domain\u003c/code\u003e macro. The service waits for the type to be defined\nin the loaded policy before it starts: \u003ccode\u003etalosctl service ext-\u0026lt;name\u0026gt;\u003c/code\u003e says so.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ServiceSELinux is the SELinux settings of an extension service."
     },
     "hardware.CPUScalingConfigV1Alpha1": {
       "properties": {
