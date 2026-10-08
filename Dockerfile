@@ -1245,6 +1245,9 @@ LABEL "alpha.talos.dev/version"="${VERSION}"
 LABEL org.opencontainers.image.source=https://github.com/siderolabs/talos
 ENTRYPOINT ["/bin/installer"]
 
+# secilc compiles the SELinux policy of the extension services into the image.
+FROM tools-${TARGETARCH} AS tools-targetarch
+
 # Imager can be thought of as an extended installer.
 # It has the boot artifacts and tools to build any requested talos image with desired modifications and system extensions.
 # Imager is meant to be run outside of talos and the talos installation flow.
@@ -1265,6 +1268,8 @@ COPY --link --exclude=**/*.a --exclude=**/*.la  --exclude=usr/include --exclude=
 COPY --link --from=pkg-pigz / /
 COPY --link --from=pkg-qemu-tools / /
 COPY --link --from=pkg-squashfs-tools / /
+COPY --link --from=tools-targetarch /usr/bin/secilc /usr/bin/secilc
+COPY --link --from=tools-targetarch /usr/lib/libsepol.so.2 /usr/lib/libsepol.so.2
 COPY --link --from=pkg-tar / /
 COPY --link --exclude=**/*.a --exclude=*.a --from=pkg-util-linux /usr/lib/libblkid.* /usr/lib/
 COPY --link --exclude=**/*.a --exclude=*.a --from=pkg-util-linux /usr/lib/libuuid.* /usr/lib/

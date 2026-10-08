@@ -14,22 +14,25 @@ import (
 
 	"github.com/cosi-project/runtime/pkg/controller"
 	"github.com/cosi-project/runtime/pkg/safe"
-	"github.com/cosi-project/runtime/pkg/state"
-	"github.com/siderolabs/gen/optional"
 	"go.uber.org/zap"
 
 	"github.com/siderolabs/talos/internal/pkg/selinux"
-	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 )
 
-// SELinuxPolicyController compiles the SELinux policy with the SELinuxPolicyConfig modules and loads it.
+// SELinuxPolicyController compiles the SELinux policy with the SELinuxModule resources and loads it.
+//
+// The modules of the extension services are part of the policy sources of the image, which the imager compiled into the
+// policy init loaded: only the other modules need a compile and a load.
 type SELinuxPolicyController struct {
 	// The compiler and the loader, replaced in tests.
 	Compile func(ctx context.Context, modules map[string]string) ([]byte, error)
 	Load    func(policy []byte) error
 
-	requested map[string]string // modules of the machine config at the last reconcile, nil until the first one
+	requested  map[string]string // modules to compile present at the last reconcile, nil until the first one
+	extensions []string          // modules of the extension services present at the last reconcile
+	loaded     map[string]string
+	rejected   map[string]error
 }
 
 // Name implements controller.Controller interface.
@@ -41,9 +44,8 @@ func (ctrl *SELinuxPolicyController) Name() string {
 func (ctrl *SELinuxPolicyController) Inputs() []controller.Input {
 	return []controller.Input{
 		{
-			Namespace: config.NamespaceName,
-			Type:      config.MachineConfigType,
-			ID:        optional.Some(config.ActiveID),
+			Namespace: runtime.NamespaceName,
+			Type:      runtime.SELinuxModuleType,
 			Kind:      controller.InputWeak,
 		},
 	}
@@ -78,48 +80,49 @@ func (ctrl *SELinuxPolicyController) Run(ctx context.Context, r controller.Runti
 		case <-r.EventCh():
 		}
 
-		cfg, err := safe.ReaderGetByID[*config.MachineConfig](ctx, r, config.ActiveID)
-		if err != nil && !state.IsNotFoundError(err) {
-			return fmt.Errorf("error getting machine config: %w", err)
-		}
-
-		modules := map[string]string{}
-
-		if cfg != nil {
-			for _, module := range cfg.Config().SELinuxPolicyConfigs() {
-				modules[module.Name()] = module.Content()
-			}
-		}
-
-		if ctrl.requested != nil && maps.Equal(modules, ctrl.requested) {
-			continue
+		list, err := safe.ReaderListAll[*runtime.SELinuxModule](ctx, r)
+		if err != nil {
+			return fmt.Errorf("error listing SELinux modules: %w", err)
 		}
 
 		var (
-			loaded   map[string]string
-			rejected map[string]error
+			modules    = map[string]string{}
+			extensions []string
 		)
 
-		// init has loaded the base policy already, only the modules need a compile and a load
-		if ctrl.requested != nil || len(modules) > 0 {
-			start := time.Now()
-
-			if loaded, rejected, err = ctrl.load(ctx, modules); err != nil {
-				return err
-			}
-
-			logger.Info("SELinux policy loaded", zap.Strings("modules", slices.Sorted(maps.Keys(loaded))), zap.Duration("duration", time.Since(start)))
-
-			for _, name := range slices.Sorted(maps.Keys(rejected)) {
-				logger.Error("SELinux policy module rejected", zap.String("module", name), zap.Error(rejected[name]))
+		for module := range list.All() {
+			if id := module.Metadata().ID(); strings.HasPrefix(id, runtime.SELinuxModuleExtensionPrefix) {
+				extensions = append(extensions, id)
+			} else {
+				modules[id] = module.TypedSpec().Content
 			}
 		}
 
-		ctrl.requested = modules
+		if ctrl.requested != nil && maps.Equal(modules, ctrl.requested) && slices.Equal(extensions, ctrl.extensions) {
+			continue
+		}
+
+		// init has loaded the policy of the image already, only a change of the other modules needs a compile and a load
+		if !maps.Equal(modules, ctrl.requested) {
+			start := time.Now()
+
+			if ctrl.loaded, ctrl.rejected, err = ctrl.load(ctx, modules); err != nil {
+				return err
+			}
+
+			logger.Info("SELinux policy loaded", zap.Strings("modules", slices.Sorted(maps.Keys(ctrl.loaded))), zap.Duration("duration", time.Since(start)))
+
+			for _, name := range slices.Sorted(maps.Keys(ctrl.rejected)) {
+				logger.Error("SELinux policy module rejected", zap.String("module", name), zap.Error(ctrl.rejected[name]))
+			}
+		}
+
+		ctrl.requested, ctrl.extensions = modules, extensions
 
 		if err = safe.WriterModify(ctx, r, runtime.NewSELinuxPolicyStatus(), func(status *runtime.SELinuxPolicyStatus) error {
-			status.TypedSpec().Modules = slices.Sorted(maps.Keys(modules))
-			status.TypedSpec().Error = rejectedError(rejected)
+			status.TypedSpec().Modules = slices.Sorted(slices.Values(append(slices.Collect(maps.Keys(modules)), extensions...)))
+			status.TypedSpec().Loaded = slices.Sorted(slices.Values(append(slices.Collect(maps.Keys(ctrl.loaded)), extensions...)))
+			status.TypedSpec().Error = rejectedError(ctrl.rejected)
 
 			return nil
 		}); err != nil {

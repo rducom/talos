@@ -1,0 +1,29 @@
+# A storage daemon: /dev, /run and /var mounted whole with a shared propagation, the entrypoint a binary of the host.
+# The sources above directories Talos labels get their own type only, and the module says which are not granted.
+name: storage
+container:
+  entrypoint: /usr/local/sbin/storaged
+  security:
+    rootfsPropagation: shared
+  mounts:
+    - source: /dev
+      destination: /dev
+      type: bind
+      options: [rbind, rshared, rw]
+    - source: /run
+      destination: /run
+      type: bind
+      options: [rbind, rshared, rw]
+    - source: /var
+      destination: /var
+      type: bind
+      options: [rbind, rshared, rw]
+    - source: /usr/local/sbin
+      destination: /usr/local/sbin
+      type: bind
+      options: [bind, ro]
+    - source: /lib
+      destination: /lib
+      type: bind
+      options: [bind, ro]
+restart: always

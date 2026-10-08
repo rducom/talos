@@ -131,3 +131,20 @@ func TestSetLabelRecursive(t *testing.T) {
 	require.NoError(t, selinux.SetLabelRecursive(root, "system_u:object_r:ext_x_state_t:s0"))
 	assert.Equal(t, []string{filepath.Join(root, "a"), filepath.Join(root, "a", "b"), filepath.Join(root, "a", "b", "c"), root}, labeled)
 }
+
+// TestBootPolicy: init loads the policy the imager compiled with the extension services, or the base policy without one.
+func TestBootPolicy(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "policy.33")
+
+	base, err := selinux.BootPolicy(path)
+	require.NoError(t, err)
+	assert.NotEmpty(t, base)
+
+	require.NoError(t, os.WriteFile(path, []byte("image policy"), 0o644))
+
+	image, err := selinux.BootPolicy(path)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("image policy"), image)
+}

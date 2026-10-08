@@ -61,7 +61,8 @@ type SELinuxPolicyConfigV1Alpha1 struct {
 	//     A workload selects the type with `securityContext.seLinuxOptions.type`, which the CRI applies when the
 	//     `SecurityProfileConfig` document sets `selinuxCategories`: load the module before the workload starts, and
 	//     remove the workload before the module. A privileged container cannot select a type, it runs as
-	//     `pod_privileged_t`, which `spc_t` is an alias of.
+	//     `pod_privileged_t`, which `spc_t` is an alias of. A type named `ext_<x>_t` collides with the module Talos
+	//     derives for an extension service `x`.
 	//   schemaRequired: true
 	PolicyContent string `yaml:"content"`
 }
