@@ -70,10 +70,12 @@ type ServiceConfigV1Alpha1 struct {
 // ServiceSELinux is the SELinux settings of an extension service.
 type ServiceSELinux struct {
 	//   description: |
-	//     SELinux type the service runs as, in place of `ext_t`.
+	//     SELinux type the service runs as, in place of the type Talos derives from the service spec.
 	//     `ext_t` and `ext_privileged_t` come with the base policy, any other is declared by a SELinuxPolicyConfig
 	//     document with the `ext_domain` or `ext_privileged_domain` macro. The service waits for the type to be defined
 	//     in the loaded policy before it starts: `talosctl service ext-<name>` says so.
+	//     The state directories keep the types derived from the spec, `ext_<name>_state_t` and `ext_<name>_run_t`:
+	//     `ext_t` and `ext_privileged_t` reach the state of every service, a type of a document what it is allowed.
 	//   examples:
 	//     - value: >
 	//        "ext_privileged_t"

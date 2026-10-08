@@ -205,9 +205,9 @@ func (svc *Extension) Condition(r runtime.Runtime) conditions.Condition {
 		}
 	}
 
-	// the modules of the machine config, which may declare the type of the service, are compiled, loaded or rejected
-	// before the service starts; a type the machine config selects is waited for, so that the service starts by itself
-	// once a module declares it
+	// the policy module derived from the spec, and the modules of the machine config which may declare the type of the
+	// service, are compiled, loaded or rejected before the service starts; a type the machine config selects is waited
+	// for, so that the service starts by itself once a module declares it
 	if selinux.IsEnabled() && svc.Spec.RunnerMode != extservices.RunnerModeHost {
 		conds = append(conds, svc.selinuxCondition(r))
 	}
@@ -219,10 +219,12 @@ func (svc *Extension) Condition(r runtime.Runtime) conditions.Condition {
 	return conditions.WaitForAll(conds...)
 }
 
-// selinuxCondition waits for the modules of the machine config and for the type it selects, if any.
+// selinuxCondition waits for the module of the service, the modules of the machine config and the type it selects, if any.
 func (svc *Extension) selinuxCondition(r runtime.Runtime) *runtimeres.SELinuxPolicyCondition {
 	st := r.State().V1Alpha2().Resources()
-	condition := runtimeres.NewSELinuxPolicyCondition(st, func() []string { return configSELinuxModules(r.Config()) })
+	condition := runtimeres.NewSELinuxPolicyCondition(st, func() []string {
+		return append([]string{runtimeres.SELinuxModuleExtensionPrefix + svc.Spec.Name}, configSELinuxModules(r.Config())...)
+	})
 
 	if configSpec, err := safe.StateGetByID[*runtimeres.ExtensionServiceConfig](context.Background(), st, svc.Spec.Name); err == nil && configSpec.TypedSpec().SELinuxType != "" {
 		condition = condition.WithType(configSpec.TypedSpec().SELinuxType, func(typ string) bool { return selinux.CheckContext(selinux.Label(typ)) == nil })
@@ -382,7 +384,7 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 	typ := cmp.Or(config.SELinuxType, constants.SELinuxTypeExtension)
 
 	if selinux.IsEnabled() {
-		if err = svc.confine(typ); err != nil {
+		if typ, err = svc.confine(r.State().V1Alpha2().Resources(), config.SELinuxType); err != nil {
 			return nil, err
 		}
 	}
@@ -406,30 +408,45 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 	), nil
 }
 
-// confine checks the type of the service against the loaded policy and labels its state directories.
-func (svc *Extension) confine(typ string) error {
-	if err := selinux.CheckContext(selinux.Label(typ)); err != nil {
-		return fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
+// confine returns the type the service runs as, the one the machine config selects, else the one its module derives once
+// loaded, checked against the loaded policy; it labels the state directories with the types of the module, else with the
+// shared ones.
+func (svc *Extension) confine(st state.State, configured string) (string, error) {
+	id := runtimeres.SELinuxModuleExtensionPrefix + svc.Spec.Name
+
+	var module *runtimeres.SELinuxModuleSpec
+
+	if res, err := safe.StateGetByID[*runtimeres.SELinuxModule](context.Background(), st, id); err == nil {
+		module = res.TypedSpec()
+	}
+
+	status, err := safe.StateGetByID[*runtimeres.SELinuxPolicyStatus](context.Background(), st, runtimeres.SELinuxPolicyStatusID)
+	typ, labels := extgen.ResolvedType(configured, module, err == nil && slices.Contains(status.TypedSpec().Loaded, id))
+
+	if err = selinux.CheckContext(selinux.Label(typ)); err != nil {
+		return "", fmt.Errorf("selinux type %q is not defined in the loaded policy", typ)
 	}
 
 	for _, mount := range svc.Spec.Container.Mounts {
-		var stateType string
+		stateType := labels[extgen.Normalize(mount.Source)]
 
-		switch extgen.StateKind(mount.Source) {
-		case extgen.KindState:
-			stateType = constants.SELinuxTypeExtensionState
-		case extgen.KindRun:
-			stateType = constants.SELinuxTypeExtensionRun
-		case extgen.KindOther:
-			continue
+		if stateType == "" {
+			switch extgen.StateKind(mount.Source) {
+			case extgen.KindState:
+				stateType = constants.SELinuxTypeExtensionState
+			case extgen.KindRun:
+				stateType = constants.SELinuxTypeExtensionRun
+			case extgen.KindOther:
+				continue
+			}
 		}
 
-		if err := labelStateDir(mount.Source, selinux.FileLabel(stateType)); err != nil {
-			return fmt.Errorf("error labeling %q: %w", mount.Source, err)
+		if err = labelStateDir(mount.Source, selinux.FileLabel(stateType)); err != nil {
+			return "", fmt.Errorf("error labeling %q: %w", mount.Source, err)
 		}
 	}
 
-	return nil
+	return typ, nil
 }
 
 // labelStateDir relabels a state directory; the directory itself is labeled last, so that its label tells the whole tree
