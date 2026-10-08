@@ -1,0 +1,25 @@
+# A network agent: its own state and run directories (/var/run is /run), a device node, a read-only host file, a
+# writable sysfs. The module declares a state and a run type and asks machined to label the directories.
+name: agent
+container:
+  entrypoint: /usr/local/bin/agent
+  security:
+    writeableSysfs: true
+  mounts:
+    - source: /var/lib/agent
+      destination: /var/lib/agent
+      type: bind
+      options: [bind, rw]
+    - source: /var/run/agent
+      destination: /var/run/agent
+      type: bind
+      options: [bind, rw]
+    - source: /dev/net/tun
+      destination: /dev/net/tun
+      type: bind
+      options: [bind, rw]
+    - source: /etc/ssl/certs
+      destination: /etc/ssl/certs
+      type: bind
+      options: [rbind, ro]
+restart: always

@@ -74,7 +74,7 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 	}
 
 	// extensions loading only needs to run once, as services are static
-	serviceFiles, err := os.ReadDir(ctrl.ConfigPath)
+	specs, err := loadExtensionServiceSpecs(ctrl.ConfigPath, logger)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			// directory not present, skip completely
@@ -103,35 +103,7 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 	ctrl.waitsForConfig = map[string]bool{}
 
 	// load services from definitions into the service runner framework
-	extServices := map[string]struct{}{}
-
-	for _, serviceFile := range serviceFiles {
-		if filepath.Ext(serviceFile.Name()) != ".yaml" {
-			logger.Debug("skipping config file", zap.String("filename", serviceFile.Name()))
-
-			continue
-		}
-
-		spec, err := ctrl.loadSpec(filepath.Join(ctrl.ConfigPath, serviceFile.Name()))
-		if err != nil {
-			logger.Error("error loading extension service spec", zap.String("filename", serviceFile.Name()), zap.Error(err))
-
-			continue
-		}
-
-		if err = spec.Validate(); err != nil {
-			logger.Error("error validating extension service spec", zap.String("filename", serviceFile.Name()), zap.Error(err))
-
-			continue
-		}
-
-		if _, exists := extServices[spec.Name]; exists {
-			logger.Error("duplicate service spec", zap.String("filename", serviceFile.Name()), zap.String("name", spec.Name))
-
-			continue
-		}
-
-		extServices[spec.Name] = struct{}{}
+	for _, spec := range specs {
 		ctrl.waitsForConfig[spec.Name] = slices.ContainsFunc(spec.Depends, func(dep extservices.Dependency) bool { return dep.Configuration })
 
 		svc := &services.Extension{
@@ -193,7 +165,53 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 	}
 }
 
-func (ctrl *ExtensionServiceController) loadSpec(path string) (extservices.Spec, error) {
+// loadExtensionServiceSpecs reads the specs of the extension services of the image, skipping the invalid and the duplicates.
+func loadExtensionServiceSpecs(dir string, logger *zap.Logger) ([]extservices.Spec, error) {
+	serviceFiles, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		specs []extservices.Spec
+		names = map[string]struct{}{}
+	)
+
+	for _, serviceFile := range serviceFiles {
+		if filepath.Ext(serviceFile.Name()) != ".yaml" {
+			logger.Debug("skipping config file", zap.String("filename", serviceFile.Name()))
+
+			continue
+		}
+
+		spec, err := loadSpec(filepath.Join(dir, serviceFile.Name()))
+		if err != nil {
+			logger.Error("error loading extension service spec", zap.String("filename", serviceFile.Name()), zap.Error(err))
+
+			continue
+		}
+
+		if err = spec.Validate(); err != nil {
+			logger.Error("error validating extension service spec", zap.String("filename", serviceFile.Name()), zap.Error(err))
+
+			continue
+		}
+
+		if _, exists := names[spec.Name]; exists {
+			logger.Error("duplicate service spec", zap.String("filename", serviceFile.Name()), zap.String("name", spec.Name))
+
+			continue
+		}
+
+		names[spec.Name] = struct{}{}
+
+		specs = append(specs, spec)
+	}
+
+	return specs, nil
+}
+
+func loadSpec(path string) (extservices.Spec, error) {
 	var spec extservices.Spec
 
 	f, err := os.Open(path)
