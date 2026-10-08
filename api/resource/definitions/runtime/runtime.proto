@@ -113,6 +113,8 @@ message ExtensionServiceConfigFile {
 message ExtensionServiceConfigSpec {
   repeated ExtensionServiceConfigFile files = 1;
   repeated string environment = 2;
+  // SELinuxType is the type the service runs as, empty to let Talos choose it.
+  string se_linux_type = 3;
 }
 
 // ExtensionServiceConfigStatusSpec describes status of rendered extensions service config files.
