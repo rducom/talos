@@ -113,6 +113,7 @@ type Config interface { //nolint:interfacebloat
 	SysctlConfig() map[string]string
 	SysfsConfig() map[string]string
 	KernelModuleConfigs() []KernelModuleConfig
+	SELinuxPolicyConfigs() []SELinuxPolicyConfig
 	UnattendedInstallConfig() UnattendedInstallConfig
 	SecurityProfileConfig() SecurityProfileConfig
 }
