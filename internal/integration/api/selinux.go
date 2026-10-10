@@ -35,6 +35,8 @@ import (
 	machineapi "github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/config/machine"
+	runtimeconfig "github.com/siderolabs/talos/pkg/machinery/config/types/runtime"
+	"github.com/siderolabs/talos/pkg/machinery/config/types/runtime/extensions"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	"github.com/siderolabs/talos/pkg/machinery/resources/k8s"
@@ -131,6 +133,12 @@ func (suite *SELinuxSuite) TestFileMountLabels() {
 		"/usr/share/containers/selinux/contexts": "system_u:object_r:usr_t:s0",
 	}
 
+	if suite.extensionsInstalled(client.WithNode(suite.ctx, suite.RandomDiscoveredNodeInternalIP())) {
+		// the imager labels the extension layers with the file_contexts of the rootfs; the service rootfs directories
+		// under /usr/local/lib/containers carry the label of the overlay machined mounts on them instead
+		expectedLabelsWorker[constants.ExtensionServiceConfigPath] = "system_u:object_r:usr_t:s0"
+	}
+
 	// Only running on controlplane
 	expectedLabelsControlPlane := map[string]string{
 		constants.EtcdPKIPath:                           constants.EtcdPKISELinuxLabel,
@@ -201,13 +209,6 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 			suite.T().Skip("skipping SELinux test since SELinux is disabled")
 		}
 
-		extensions, err := safe.StateListAll[*runtimeres.ExtensionStatus](nodeCtx, suite.Client.COSI)
-		suite.Require().NoError(err)
-
-		if extensions.Len() > 0 {
-			suite.T().Skip("skipping SELinux test since extensions are running")
-		}
-
 		for path, label := range expectedLabels {
 			req := &machineapi.ListRequest{
 				Root:         path,
@@ -234,21 +235,6 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 					}, kubeletPluginDirs...),
 					path,
 				) && info.Name != path {
-					return nil
-				}
-
-				// these are symlinks that comes from files from extensions, and we don't set xattrs for extensions yet
-				// TODO(frezbo): update the test to check for correct labels once we set xattrs for extensions
-				switch info.Name {
-				case "/etc/ld.so.conf", "/etc/ld.so.cache":
-					return nil
-				case "/usr/bin/nvidia-smi":
-					return nil
-				case "/usr/bin/nvidia-ctk":
-					return nil
-				case "/usr/bin/nvidia-cdi-hook":
-					return nil
-				case "/usr/bin/nvme":
 					return nil
 				}
 
@@ -282,6 +268,13 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 			}
 		}
 	}
+}
+
+func (suite *SELinuxSuite) extensionsInstalled(nodeCtx context.Context) bool {
+	extensions, err := safe.StateListAll[*runtimeres.ExtensionStatus](nodeCtx, suite.Client.COSI)
+	suite.Require().NoError(err)
+
+	return extensions.Len() > 0
 }
 
 // TestProcessLabels reads labels of system processes from procfs
@@ -727,7 +720,95 @@ func (suite *SELinuxSuite) TestNoHostDenials() {
 	}
 }
 
-// TODO: test labels for unconfined system extensions
+// extensionServiceLabel returns the process label of a running extension service.
+func (suite *SELinuxSuite) extensionServiceLabel(nodeCtx context.Context, id string) string {
+	pid, err := safe.StateGetByID[*runtimeres.ServicePID](nodeCtx, suite.Client.COSI, id)
+	suite.Require().NoError(err)
+
+	return suite.getLabel(nodeCtx, pid.TypedSpec().PID)
+}
+
+// waitForExtensionServiceEvent waits for the last event of an extension service to carry the message.
+func (suite *SELinuxSuite) waitForExtensionServiceEvent(nodeCtx context.Context, id, message string) {
+	suite.Require().NoError(retry.Constant(2*time.Minute, retry.WithUnits(time.Second)).Retry(func() error {
+		info, err := suite.Client.ServiceInfo(nodeCtx, id)
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		events := info[0].Service.Events.Events
+		if len(events) == 0 || !strings.Contains(events[len(events)-1].Msg, message) {
+			return retry.ExpectedErrorf("%s: last event is not %q", id, message)
+		}
+
+		return nil
+	}))
+}
+
+// TestExtensionServiceDomains checks the domain of the extension services in container mode, ext_t unless the machine config
+// selects another type, and that a service waits for a type no module declares yet.
+func (suite *SELinuxSuite) TestExtensionServiceDomains() {
+	node := suite.RandomDiscoveredNodeInternalIP()
+	nodeCtx := client.WithNode(suite.ctx, node)
+
+	if pointer.SafeDeref(procfs.NewCmdline(suite.ReadCmdline(nodeCtx)).Get(constants.KernelParamSELinux).First()) == "" {
+		suite.T().Skip("skipping SELinux test since SELinux is disabled")
+	}
+
+	services, err := safe.StateListAll[*v1alpha1.Service](nodeCtx, suite.Client.COSI)
+	suite.Require().NoError(err)
+
+	var name string
+
+	for svc := range services.All() {
+		if !strings.HasPrefix(svc.Metadata().ID(), "ext-") || !svc.TypedSpec().Running {
+			continue
+		}
+
+		// services in host mode keep their domain
+		if label := suite.extensionServiceLabel(nodeCtx, svc.Metadata().ID()); label != constants.SelinuxLabelUnconfinedService {
+			suite.Assert().Equal("system_u:system_r:"+constants.SELinuxTypeExtension+":s0", label, svc.Metadata().ID())
+
+			name = strings.TrimPrefix(svc.Metadata().ID(), "ext-")
+		}
+	}
+
+	if name == "" {
+		suite.T().Skip("skipping SELinux test since no extension service runs in container mode")
+	}
+
+	cfg := extensions.NewServicesConfigV1Alpha1()
+	cfg.ServiceName = name
+	cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxType: "ext_privileged_t"}
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
+	suite.Assert().Equal("system_u:system_r:ext_privileged_t:s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	// a type no module declares yet: the service waits for it, and starts by itself once a module declares it
+	cfg.ServiceSELinux.SELinuxType = "ext_declared_later_t"
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "selinux type ext_declared_later_t")
+
+	declared := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("declared-later")
+	declared.PolicyContent = "(type ext_declared_later_t)\n(call ext_privileged_domain (ext_declared_later_t))\n"
+
+	suite.PatchMachineConfig(nodeCtx, declared)
+
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
+	suite.Assert().Equal("system_u:system_r:ext_declared_later_t:s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	// the service leaves the type before its module goes
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+	suite.waitForExtensionServiceEvent(nodeCtx, "ext-"+name, "Started task")
+	suite.Assert().Equal("system_u:system_r:"+constants.SELinuxTypeExtension+":s0", suite.extensionServiceLabel(nodeCtx, "ext-"+name))
+
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "declared-later")
+}
 
 // TestNoPtrace confirms ptracing system processes is prohibited in enforcing mode.
 func (suite *SELinuxSuite) TestNoPtrace() {

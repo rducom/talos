@@ -130,7 +130,28 @@ func TestExtensionServiceConfigValidate(t *testing.T) {
 
 				return cfg
 			},
-			expectedError: `no config files found for extension "foo"`,
+			expectedError: `no config files, environment or selinux settings found for extension "foo"`,
+		},
+		{
+			name: "selinux settings alone",
+			cfg: func() *extensions.ServiceConfigV1Alpha1 {
+				cfg := extensions.NewServicesConfigV1Alpha1()
+				cfg.ServiceName = "foo"
+				cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxType: "ext_t"}
+
+				return cfg
+			},
+		},
+		{
+			name: "invalid selinux type",
+			cfg: func() *extensions.ServiceConfigV1Alpha1 {
+				cfg := extensions.NewServicesConfigV1Alpha1()
+				cfg.ServiceName = "foo"
+				cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxType: "ext-privileged"}
+
+				return cfg
+			},
+			expectedError: `invalid selinux type "ext-privileged" for extension "foo"`,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

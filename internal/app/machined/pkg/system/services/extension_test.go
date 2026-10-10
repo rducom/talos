@@ -382,3 +382,14 @@ func TestExtensionHostRunnerRejectsRelativeEntrypoint(t *testing.T) {
 	_, err := svc.HostProcessArgs()
 	assert.EqualError(t, err, "host runner entrypoint must be an absolute path: \"usr/local/bin/hello\"")
 }
+
+// TestExtensionRelabelable: a state directory is taken over from its filesystem type or a previous extension type only.
+func TestExtensionRelabelable(t *testing.T) {
+	for label, want := range map[string]bool{
+		constants.EphemeralSelinuxLabel:              true,
+		"system_u:object_r:ext_tailscale_state_t:s0": true,
+		constants.KubeletDataSELinuxLabel:            false,
+	} {
+		assert.Equal(t, want, services.Relabelable(label), label)
+	}
+}
