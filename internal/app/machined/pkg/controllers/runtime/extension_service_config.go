@@ -80,6 +80,7 @@ func (ctrl *ExtensionServiceConfigController) Run(ctx context.Context, r control
 
 					spec.TypedSpec().Environment = extConfig.Environment()
 					spec.TypedSpec().SELinuxType = extConfig.SELinuxType()
+					spec.TypedSpec().SELinuxAudit = extConfig.SELinuxAudit()
 
 					return nil
 				}); err != nil {

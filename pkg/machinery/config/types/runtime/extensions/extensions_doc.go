@@ -75,6 +75,13 @@ func (ServiceSELinux) Doc() *encoder.Doc {
 				Description: "SELinux type the service runs as, in place of the type Talos derives from the service spec.\n`ext_t` and `ext_privileged_t` come with the base policy, any other is declared by a SELinuxPolicyConfig\ndocument with the `ext_domain` or `ext_privileged_domain` macro. The service waits for the type to be defined\nin the loaded policy before it starts: `talosctl service ext-<name>` says so.\nThe state directories keep the types derived from the spec, `ext_<name>_state_t` and `ext_<name>_run_t`:\n`ext_t` and `ext_privileged_t` reach the state of every service, a type of a document what it is allowed.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "SELinux type the service runs as, in place of the type Talos derives from the service spec." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
+			{
+				Name:        "audit",
+				Type:        "bool",
+				Note:        "",
+				Description: "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the\npolicy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.\nThe service restarts when the flag is set, so that the accesses of its start are observed.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the" /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
 		},
 	}
 

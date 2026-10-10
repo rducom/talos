@@ -286,6 +286,8 @@ func NewState() (*State, error) {
 		&runtime.PlatformMetadata{},
 		&runtime.SBOMItem{},
 		&runtime.SecurityState{},
+		&runtime.SELinuxAccessLog{},
+		&runtime.SELinuxDomainStatus{},
 		&runtime.SELinuxModule{},
 		&runtime.SELinuxPolicyStatus{},
 		&runtime.ServicePID{},

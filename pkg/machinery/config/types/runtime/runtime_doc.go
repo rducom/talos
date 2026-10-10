@@ -817,6 +817,13 @@ func (SELinuxPolicyConfigV1Alpha1) Doc() *encoder.Doc {
 				Description: "Policy module in CIL, compiled with the Talos policy and loaded without a reboot.\nA module declares a type and calls a macro of the base policy, whose sources are in `/usr/share/selinux/talos`:\n`pod_domain` gives the rights of `pod_t`, `pod_privileged_domain` those of `pod_privileged_t`, and\n`pod_hostmon_domain` those of a process monitor, which reads `/proc` and the files of every pod and writes none.\nWhatever a module grants, a workload domain never reads STATE, connects to machined or ptraces a host service:\n`secilc` rejects such a module, which is left out while the other modules are loaded.\nA workload selects the type with `securityContext.seLinuxOptions.type`: load the module before the workload\nstarts, and remove the workload before the module. A privileged container cannot select a type, it runs as\n`pod_privileged_t`, which `spc_t` is an alias of. A type named `ext_<x>_t` collides with the module Talos\nderives for an extension service `x`.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Policy module in CIL, compiled with the Talos policy and loaded without a reboot." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
+			{
+				Name:        "audit",
+				Type:        "bool",
+				Note:        "",
+				Description: "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the\naccesses the policy grants it, exercised or not since the audit began, and a policy module narrowed to the\nexercised ones. Restart the workload once the flag is set: the accesses of its start are observed only then,\nand the narrowed module says so while they are missing.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Observe the permissions the types of the module exercise: the SELinuxDomainStatus of each type lists the" /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
 		},
 	}
 

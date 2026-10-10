@@ -137,7 +137,7 @@ func TestExtensionServiceConfigValidate(t *testing.T) {
 			cfg: func() *extensions.ServiceConfigV1Alpha1 {
 				cfg := extensions.NewServicesConfigV1Alpha1()
 				cfg.ServiceName = "foo"
-				cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxType: "ext_t"}
+				cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxAudit: true}
 
 				return cfg
 			},
