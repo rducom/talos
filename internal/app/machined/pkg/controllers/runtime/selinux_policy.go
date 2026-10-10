@@ -14,22 +14,19 @@ import (
 
 	"github.com/cosi-project/runtime/pkg/controller"
 	"github.com/cosi-project/runtime/pkg/safe"
-	"github.com/cosi-project/runtime/pkg/state"
-	"github.com/siderolabs/gen/optional"
 	"go.uber.org/zap"
 
 	"github.com/siderolabs/talos/internal/pkg/selinux"
-	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 )
 
-// SELinuxPolicyController compiles the SELinux policy with the SELinuxPolicyConfig modules and loads it.
+// SELinuxPolicyController compiles the SELinux policy with the SELinuxModule resources and loads it.
 type SELinuxPolicyController struct {
 	// The compiler and the loader, replaced in tests.
 	Compile func(ctx context.Context, modules map[string]string) ([]byte, error)
 	Load    func(policy []byte) error
 
-	requested map[string]string // modules of the machine config at the last reconcile, nil until the first one
+	requested map[string]string // modules present at the last reconcile, nil until the first one
 }
 
 // Name implements controller.Controller interface.
@@ -41,9 +38,8 @@ func (ctrl *SELinuxPolicyController) Name() string {
 func (ctrl *SELinuxPolicyController) Inputs() []controller.Input {
 	return []controller.Input{
 		{
-			Namespace: config.NamespaceName,
-			Type:      config.MachineConfigType,
-			ID:        optional.Some(config.ActiveID),
+			Namespace: runtime.NamespaceName,
+			Type:      runtime.SELinuxModuleType,
 			Kind:      controller.InputWeak,
 		},
 	}
@@ -78,17 +74,15 @@ func (ctrl *SELinuxPolicyController) Run(ctx context.Context, r controller.Runti
 		case <-r.EventCh():
 		}
 
-		cfg, err := safe.ReaderGetByID[*config.MachineConfig](ctx, r, config.ActiveID)
-		if err != nil && !state.IsNotFoundError(err) {
-			return fmt.Errorf("error getting machine config: %w", err)
+		list, err := safe.ReaderListAll[*runtime.SELinuxModule](ctx, r)
+		if err != nil {
+			return fmt.Errorf("error listing SELinux modules: %w", err)
 		}
 
 		modules := map[string]string{}
 
-		if cfg != nil {
-			for _, module := range cfg.Config().SELinuxPolicyConfigs() {
-				modules[module.Name()] = module.Content()
-			}
+		for module := range list.All() {
+			modules[module.Metadata().ID()] = module.TypedSpec().Content
 		}
 
 		if ctrl.requested != nil && maps.Equal(modules, ctrl.requested) {
@@ -119,6 +113,7 @@ func (ctrl *SELinuxPolicyController) Run(ctx context.Context, r controller.Runti
 
 		if err = safe.WriterModify(ctx, r, runtime.NewSELinuxPolicyStatus(), func(status *runtime.SELinuxPolicyStatus) error {
 			status.TypedSpec().Modules = slices.Sorted(maps.Keys(modules))
+			status.TypedSpec().Loaded = slices.Sorted(maps.Keys(loaded))
 			status.TypedSpec().Error = rejectedError(rejected)
 
 			return nil
