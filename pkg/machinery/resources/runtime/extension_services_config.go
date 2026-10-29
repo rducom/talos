@@ -27,6 +27,8 @@ type ExtensionServiceConfigSpec struct {
 	Environment []string                     `yaml:"environment,omitempty" protobuf:"2"`
 	// SELinuxType is the type the service runs as, empty to let Talos choose it.
 	SELinuxType string `yaml:"selinuxType,omitempty" protobuf:"3"`
+	// SELinuxAudit reports whether the permissions the service exercises are audited.
+	SELinuxAudit bool `yaml:"selinuxAudit,omitempty" protobuf:"4"`
 }
 
 // ExtensionServiceConfigFile describes extensions service config files.

@@ -252,6 +252,8 @@ func All() []meta.ResourceWithRD {
 		&runtime.PlatformMetadata{},
 		&runtime.SBOMItem{},
 		&runtime.SecurityState{},
+		&runtime.SELinuxAccessLog{},
+		&runtime.SELinuxDomainStatus{},
 		&runtime.SELinuxModule{},
 		&runtime.SELinuxPolicyStatus{},
 		&runtime.ServicePID{},

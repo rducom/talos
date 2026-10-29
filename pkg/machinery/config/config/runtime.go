@@ -85,6 +85,8 @@ type SELinuxPolicyConfig interface {
 	NamedDocument
 	SELinuxPolicyConfigSignal()
 	Content() string
+	// Audit reports whether the permissions the types of the module exercise are audited.
+	Audit() bool
 }
 
 // KernelModuleConfig defines the interface to access a Talos kernel module to load.

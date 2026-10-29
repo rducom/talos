@@ -4,6 +4,9 @@
 
 package selinux
 
+// ParseAccessVector exposes parseAccessVector for tests.
+var ParseAccessVector = parseAccessVector
+
 // SetLabelFunc replaces the label setter for tests.
 func SetLabelFunc(fn func(path, label string, excludeLabels ...string) error) {
 	setLabel = fn

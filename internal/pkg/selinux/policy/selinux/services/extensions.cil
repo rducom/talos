@@ -39,10 +39,10 @@
 (allow sys_containerd_t ext_rootfs_t (fs_classes (rw)))
 (allow sys_containerd_t ext_rootfs_t (file (execute)))
 
-(macro ext_domain ((type ARG1))
+; What the system needs to run an extension domain; a module narrowed to the accesses a service exercised calls this one.
+(macro ext_plumbing ((type ARG1))
     (roletype system_r ARG1)
     (typeattributeset extension_p ARG1)
-    ; started by the system containerd, supervised by machined
     (allow sys_containerd_t ARG1 (process (transition)))
     (allow sys_containerd_t ARG1 (process2 (nnp_transition nosuid_transition)))
     (allow sys_containerd_t ARG1 (fs_classes (rw)))
@@ -54,6 +54,12 @@
     (allow ARG1 init_t (fd (use)))
     (allow init_t ARG1 (process (transition)))
     (allow init_t ARG1 (process2 (nosuid_transition)))
+    ; the snapshotters and shims serve sockets to the CRI
+    (allow pod_containerd_t ARG1 (unix_stream_socket (connectto)))
+)
+
+(macro ext_domain ((type ARG1))
+    (call ext_plumbing (ARG1))
     ; its rootfs, prepared by the system containerd, which execs the entrypoint from sys_containerd_t
     (allow ARG1 ext_rootfs_t (file (entrypoint execute execute_no_trans)))
     (allow ARG1 ext_rootfs_t (fs_classes (ro)))
@@ -68,8 +74,6 @@
     ; the config files of ExtensionServiceConfig, bind-mounted from /system/overlays; the files of every service
     ; are system_t, a spec mounting /system would read them all
     (allow ARG1 system_t (fs_classes (ro)))
-    ; the snapshotters and shims serve sockets to the CRI
-    (allow pod_containerd_t ARG1 (unix_stream_socket (connectto)))
 )
 (allow sys_containerd_t usr_t (file (execute)))
 
@@ -78,8 +82,7 @@
 (call ext_domain (ext_t))
 (allow ext_t ext_state_a (fs_classes (rw)))
 
-; Wide host profile: /dev, /run, /var, /sys writable, mounts, the machined socket. Never chosen by machined,
-; an operator selects it with ExtensionServiceConfig.selinux.type.
+; Host profile, selected by ExtensionServiceConfig.selinux.type only.
 (macro ext_privileged_domain ((type ARG1))
     (call ext_domain (ARG1))
     (allow ARG1 ext_state_a (fs_classes (rw)))
