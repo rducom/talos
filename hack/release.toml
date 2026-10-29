@@ -271,6 +271,12 @@ categories. `spc_t` is an alias of it, so charts written for Fedora and RHEL kee
 A pod writing files which outlive it, to a hostPath or a local volume, needs a fixed `securityContext.seLinuxOptions.level`,
 else the pod of the next start cannot read them. The CRI skips the pairs of running containers when it draws one, so
 the pair is exclusive only while the pod runs.
+
+The new `SELinuxPolicyConfig` document carries a policy module in CIL, which machined compiles with the Talos policy and loads
+without a reboot. A module declares one type per workload with the `pod_domain`, `pod_privileged_domain` or `pod_hostmon_domain`
+macro, and the workload selects it with `securityContext.seLinuxOptions.type`. A module the compiler rejects is left out and the
+others are loaded, at boot as well as on a change; `talosctl get selinuxpolicystatus` names it with the error. The image ships
+the policy sources and `secilc` in `/usr/share/selinux/talos`.
 """
 
     [notes.kubespan_peer_endpoint_filters]
