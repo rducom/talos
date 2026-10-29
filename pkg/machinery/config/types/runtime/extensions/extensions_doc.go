@@ -41,10 +41,44 @@ func (ServiceConfigV1Alpha1) Doc() *encoder.Doc {
 				Description: "The environment for the extension service.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "The environment for the extension service." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
+			{
+				Name:        "selinux",
+				Type:        "ServiceSELinux",
+				Note:        "",
+				Description: "SELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "SELinux settings of the extension service, ignored for a service in host runner mode." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
 		},
 	}
 
 	doc.AddExample("", extensionServiceConfigV1Alpha1())
+
+	return doc
+}
+
+func (ServiceSELinux) Doc() *encoder.Doc {
+	doc := &encoder.Doc{
+		Type:        "ServiceSELinux",
+		Comments:    [3]string{"" /* encoder.HeadComment */, "ServiceSELinux is the SELinux settings of an extension service." /* encoder.LineComment */, "" /* encoder.FootComment */},
+		Description: "ServiceSELinux is the SELinux settings of an extension service.",
+		AppearsIn: []encoder.Appearance{
+			{
+				TypeName:  "ServiceConfigV1Alpha1",
+				FieldName: "selinux",
+			},
+		},
+		Fields: []encoder.Doc{
+			{
+				Name:        "type",
+				Type:        "string",
+				Note:        "",
+				Description: "SELinux type the service runs as, in place of `ext_t`.\n`ext_t` and `ext_privileged_t` come with the base policy, any other is declared by a SELinuxPolicyConfig\ndocument with the `ext_domain` or `ext_privileged_domain` macro. The service waits for the type to be defined\nin the loaded policy before it starts: `talosctl service ext-<name>` says so.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "SELinux type the service runs as, in place of `ext_t`." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+		},
+	}
+
+	doc.Fields[0].AddExample("", "ext_privileged_t")
 
 	return doc
 }
@@ -88,6 +122,7 @@ func GetFileDoc() *encoder.FileDoc {
 		Description: "Package extensions provides extensions config documents.\n",
 		Structs: []*encoder.Doc{
 			ServiceConfigV1Alpha1{}.Doc(),
+			ServiceSELinux{}.Doc(),
 			ConfigFile{}.Doc(),
 		},
 	}

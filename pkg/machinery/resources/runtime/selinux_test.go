@@ -67,4 +67,14 @@ func TestSELinuxPolicyCondition(t *testing.T) {
 	}))
 
 	assert.NoError(t, <-done)
+
+	// a type is checked at every change of the status, until the policy defines it
+	defined := func(typ string) bool { return typ == "ext_custom_t" }
+
+	assert.NoError(t, runtime.NewSELinuxPolicyCondition(st, func() []string { return *modules.Load() }).WithType("ext_custom_t", defined).Wait(ctx))
+
+	short, shortCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer shortCancel()
+
+	assert.ErrorIs(t, runtime.NewSELinuxPolicyCondition(st, func() []string { return nil }).WithType("ext_unknown_t", defined).Wait(short), context.DeadlineExceeded)
 }
