@@ -129,13 +129,15 @@ func (c *CRI) Condition(r runtime.Runtime) conditions.Condition {
 	return conditions.WaitForAll(cond...)
 }
 
-// configSELinuxModules lists the SELinuxPolicyConfig documents of the machine config.
+// configSELinuxModules lists the SELinuxModule IDs of the SELinuxPolicyConfig documents of the machine config.
 func configSELinuxModules(cfg config.Config) []string {
 	if cfg == nil {
 		return nil
 	}
 
-	return xslices.Map(cfg.SELinuxPolicyConfigs(), func(module config.SELinuxPolicyConfig) string { return module.Name() })
+	return xslices.Map(cfg.SELinuxPolicyConfigs(), func(module config.SELinuxPolicyConfig) string {
+		return runtimeres.SELinuxModuleConfigPrefix + module.Name()
+	})
 }
 
 // DependsOn implements the Service interface.

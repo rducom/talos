@@ -26,10 +26,12 @@ type SELinuxPolicyStatus = typed.Resource[SELinuxPolicyStatusSpec, SELinuxPolicy
 //
 //gotagsrewrite:gen
 type SELinuxPolicyStatusSpec struct {
-	// Modules are the SELinuxPolicyConfig documents of the machine config at the last reconcile.
+	// Modules are the SELinuxModule resources at the last reconcile.
 	Modules []string `yaml:"modules" protobuf:"1"`
 	// Error names the modules the compiler rejected at the last reconcile, with its error; the other modules are loaded.
 	Error string `yaml:"error,omitempty" protobuf:"2"`
+	// Loaded are the modules compiled into the policy the kernel runs: the last set accepted, Modules unless Error is set.
+	Loaded []string `yaml:"loaded,omitempty" protobuf:"3"`
 }
 
 // NewSELinuxPolicyStatus initializes a SELinuxPolicyStatus resource.
@@ -57,6 +59,10 @@ func (SELinuxPolicyStatusExtension) ResourceDefinition() meta.ResourceDefinition
 			{
 				Name:     "Error",
 				JSONPath: `{.error}`,
+			},
+			{
+				Name:     "Loaded",
+				JSONPath: `{.loaded}`,
 			},
 		},
 	}
