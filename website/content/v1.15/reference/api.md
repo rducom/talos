@@ -470,6 +470,7 @@ description: Talos gRPC API reference.
 - [resource/definitions/containers/containers.proto](#resource/definitions/containers/containers.proto)
     - [ContainerDependencyStatusSpec](#talos.resource.definitions.containers.ContainerDependencyStatusSpec)
     - [ContainerDependsOnSpec](#talos.resource.definitions.containers.ContainerDependsOnSpec)
+    - [ContainerDeviceSpec](#talos.resource.definitions.containers.ContainerDeviceSpec)
     - [ContainerImageSpec](#talos.resource.definitions.containers.ContainerImageSpec)
     - [ContainerImageStatusSpec](#talos.resource.definitions.containers.ContainerImageStatusSpec)
     - [ContainerInstanceSpecSpec](#talos.resource.definitions.containers.ContainerInstanceSpecSpec)
@@ -482,6 +483,7 @@ description: Talos gRPC API reference.
     - [ContainerSecuritySpec](#talos.resource.definitions.containers.ContainerSecuritySpec)
     - [ContainerSpecSpec](#talos.resource.definitions.containers.ContainerSpecSpec)
     - [ContainerStatusSpec](#talos.resource.definitions.containers.ContainerStatusSpec)
+    - [ResolvedDeviceSpec](#talos.resource.definitions.containers.ResolvedDeviceSpec)
     - [ResolvedMountSpec](#talos.resource.definitions.containers.ResolvedMountSpec)
   
 - [resource/definitions/cri/cri.proto](#resource/definitions/cri/cri.proto)
@@ -576,6 +578,7 @@ description: Talos gRPC API reference.
     - [ArgValues](#talos.resource.definitions.k8s.ArgValues)
     - [AuditPolicyConfigSpec](#talos.resource.definitions.k8s.AuditPolicyConfigSpec)
     - [AuthenticationConfigSpec](#talos.resource.definitions.k8s.AuthenticationConfigSpec)
+    - [AuthenticationTokenWebhookSpec](#talos.resource.definitions.k8s.AuthenticationTokenWebhookSpec)
     - [AuthorizationAuthorizersSpec](#talos.resource.definitions.k8s.AuthorizationAuthorizersSpec)
     - [AuthorizationConfigSpec](#talos.resource.definitions.k8s.AuthorizationConfigSpec)
     - [BootstrapManifestsConfigSpec](#talos.resource.definitions.k8s.BootstrapManifestsConfigSpec)
@@ -8276,6 +8279,23 @@ ContainerDependsOnSpec is the resolved dependency set.
 
 
 
+<a name="talos.resource.definitions.containers.ContainerDeviceSpec"></a>
+
+### ContainerDeviceSpec
+ContainerDeviceSpec is a device handed to the container.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [string](#string) |  | Kind is "rawVolume". |
+| volume_name | [string](#string) |  | VolumeName is the name of the RawVolumeConfig a rawVolume device refers to, e.g. "data". |
+| destination | [string](#string) |  | Destination of the device node inside the container. |
+
+
+
+
+
+
 <a name="talos.resource.definitions.containers.ContainerImageSpec"></a>
 
 ### ContainerImageSpec
@@ -8333,6 +8353,7 @@ later changes to those inputs: a spec change destroys this instance rather than 
 | security | [ContainerSecuritySpec](#talos.resource.definitions.containers.ContainerSecuritySpec) |  |  |
 | network | [ContainerNetworkSpec](#talos.resource.definitions.containers.ContainerNetworkSpec) |  |  |
 | resources | [ContainerResourcesSpec](#talos.resource.definitions.containers.ContainerResourcesSpec) |  |  |
+| devices | [ResolvedDeviceSpec](#talos.resource.definitions.containers.ResolvedDeviceSpec) | repeated | Devices are fully resolved, with host device nodes filled in. |
 
 
 
@@ -8394,6 +8415,7 @@ ContainerMountStatusSpec is the spec for ContainerMountStatus.
 | ready | [bool](#bool) |  | Ready is true once every mount the container declares is available. |
 | mounts | [ResolvedMountSpec](#talos.resource.definitions.containers.ResolvedMountSpec) | repeated | Mounts are the resolved mounts, with host source paths filled in. Only meaningful when Ready. |
 | error | [string](#string) |  | Error describes why the mounts are not ready. |
+| devices | [ResolvedDeviceSpec](#talos.resource.definitions.containers.ResolvedDeviceSpec) | repeated | Devices are the resolved devices, with host device nodes filled in. Only meaningful when Ready. |
 
 
 
@@ -8465,6 +8487,7 @@ ContainerSecuritySpec is the resolved security posture.
 | capabilities_add | [string](#string) | repeated |  |
 | capabilities_drop | [string](#string) | repeated |  |
 | machined_access | [bool](#bool) |  | MachinedAccess publishes the container's PID as a ServicePID resource and mounts the machined API socket into the container. |
+| se_linux_level | [string](#string) |  | SELinuxLevel is the MCS level the container runs at, stable across restarts so that it keeps access to the files it writes; empty when containers run without categories. |
 
 
 
@@ -8490,6 +8513,7 @@ ContainerSpecSpec is the spec for ContainerSpec.
 | network | [ContainerNetworkSpec](#talos.resource.definitions.containers.ContainerNetworkSpec) |  |  |
 | resources | [ContainerResourcesSpec](#talos.resource.definitions.containers.ContainerResourcesSpec) |  |  |
 | depends_on | [ContainerDependsOnSpec](#talos.resource.definitions.containers.ContainerDependsOnSpec) |  |  |
+| devices | [ContainerDeviceSpec](#talos.resource.definitions.containers.ContainerDeviceSpec) | repeated |  |
 
 
 
@@ -8512,6 +8536,25 @@ ContainerStatusSpec is the spec for ContainerStatus.
 | restart_count | [uint64](#uint64) |  | RestartCount is the current instance generation, i.e. restarts beyond the first start. |
 | error | [string](#string) |  | Error is the last failure, verbatim, from whichever stage produced it. |
 | waiting_for | [string](#string) | repeated | WaitingFor lists the unmet readiness gates (image, mounts, dependsOn entries) while State is pending. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ResolvedDeviceSpec"></a>
+
+### ResolvedDeviceSpec
+ResolvedDeviceSpec is a device with its host-side device node resolved.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [string](#string) |  |  |
+| source | [string](#string) |  | Source is the device node on the host, e.g. "/dev/sdb1", or "/dev/dm-0" for an encrypted volume. |
+| destination | [string](#string) |  |  |
+| volume_id | [string](#string) |  | VolumeID is the block volume ID of a rawVolume device, e.g. "r-data". |
+| volume_name | [string](#string) |  | VolumeName is the name of the RawVolumeConfig a rawVolume device refers to. |
 
 
 
@@ -9955,6 +9998,7 @@ APIServerConfigSpec is configuration for kube-apiserver.
 | startup_probes_enabled | [bool](#bool) |  |  |
 | use_authentication_config | [bool](#bool) |  |  |
 | args | [string](#string) | repeated |  |
+| se_linux_level | [string](#string) |  | SELinuxLevel is the fixed MCS level of the kube-apiserver pod, empty when pods run without categories. |
 
 
 
@@ -10063,6 +10107,24 @@ AuthenticationConfigSpec is authentication configuration for kube-apiserver.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | config | [google.protobuf.Struct](#google.protobuf.Struct) |  |  |
+| token_webhook | [AuthenticationTokenWebhookSpec](#talos.resource.definitions.k8s.AuthenticationTokenWebhookSpec) |  |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.k8s.AuthenticationTokenWebhookSpec"></a>
+
+### AuthenticationTokenWebhookSpec
+AuthenticationTokenWebhookSpec is webhook token authentication configuration for kube-apiserver.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kubeconfig | [string](#string) |  |  |
+| version | [string](#string) |  |  |
+| cache_ttl | [google.protobuf.Duration](#google.protobuf.Duration) |  |  |
 
 
 
@@ -10080,6 +10142,7 @@ AuthorizationAuthorizersSpec is a configuration of authorization authorizers.
 | type | [string](#string) |  |  |
 | name | [string](#string) |  |  |
 | webhook | [google.protobuf.Struct](#google.protobuf.Struct) |  |  |
+| kubeconfig | [string](#string) |  | Kubeconfig is rendered into the kube-apiserver static pod and set as the webhook connection info. |
 
 
 
@@ -11653,6 +11716,7 @@ SecurityStateSpec describes the security state resource properties.
 | module_signature_enforced | [bool](#bool) |  |  |
 | lockdown_state | [talos.resource.definitions.enums.RuntimeLockdownState](#talos.resource.definitions.enums.RuntimeLockdownState) |  |  |
 | secure_boot_authority_fingerprints | [string](#string) | repeated | SecureBootAuthorityFingerprints are the fingerprints of the `db` certificates which the firmware used to authorize the images loaded in this boot, as recorded in PCR 7. |
+| se_linux_categories | [bool](#bool) |  | SELinuxCategories is set when SELinux is enabled and workloads are labeled with MCS categories. |
 
 
 

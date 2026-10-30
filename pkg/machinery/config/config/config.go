@@ -27,6 +27,7 @@ type Config interface { //nolint:interfacebloat
 	NetworkKubeSpanConfig() NetworkKubeSpanConfig
 	NetworkCommonLinkConfigs() []NetworkCommonLinkConfig
 	NetworkLinkAliasConfigs() []NetworkLinkAliasConfig
+	NetworkLinkIngressConfigs() []NetworkLinkIngressConfig
 	NetworkDHCPConfigs() []NetworkDHCPConfig
 	NetworkDHCPv4Configs() []NetworkDHCPv4Config
 	NetworkDHCPv6Configs() []NetworkDHCPv6Config
@@ -46,6 +47,7 @@ type Config interface { //nolint:interfacebloat
 	K8sAdmissionControlPluginConfigs() []K8sAdmissionControlPluginConfig
 	K8sAuditPolicyConfig() K8sAuditPolicyConfig
 	K8sAuthenticationConfig() K8sAuthenticationConfig
+	K8sAuthenticationWebhookConfig() K8sAuthenticationWebhookConfig
 	K8sAuthorizerConfigs() []K8sAuthorizerConfig
 	K8sEtcdEncryptionConfig() K8sEtcdEncryptionConfig
 	K8sAPIServerConfig() K8sAPIServerConfig

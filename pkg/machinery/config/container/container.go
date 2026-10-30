@@ -673,6 +673,11 @@ func (container *Container) NetworkLinkAliasConfigs() []config.NetworkLinkAliasC
 	return findMatchingDocs[config.NetworkLinkAliasConfig](container.documents)
 }
 
+// NetworkLinkIngressConfigs implements config.Config interface.
+func (container *Container) NetworkLinkIngressConfigs() []config.NetworkLinkIngressConfig {
+	return findMatchingDocs[config.NetworkLinkIngressConfig](container.documents)
+}
+
 // NetworkDHCPConfigs implements config.Config interface.
 func (container *Container) NetworkDHCPConfigs() []config.NetworkDHCPConfig {
 	return findMatchingDocs[config.NetworkDHCPConfig](container.documents)
@@ -782,6 +787,16 @@ func (container *Container) K8sAuditPolicyConfig() config.K8sAuditPolicyConfig {
 // K8sAuthenticationConfig implements config.Config interface.
 func (container *Container) K8sAuthenticationConfig() config.K8sAuthenticationConfig {
 	matching := findMatchingDocs[config.K8sAuthenticationConfig](container.documents)
+	if len(matching) > 0 {
+		return matching[0]
+	}
+
+	return nil
+}
+
+// K8sAuthenticationWebhookConfig implements config.Config interface.
+func (container *Container) K8sAuthenticationWebhookConfig() config.K8sAuthenticationWebhookConfig {
+	matching := findMatchingDocs[config.K8sAuthenticationWebhookConfig](container.documents)
 	if len(matching) > 0 {
 		return matching[0]
 	}

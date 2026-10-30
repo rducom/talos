@@ -253,6 +253,26 @@ On UEFI systems booted via `systemd-boot` the boot partition comes from the `Loa
 now passes the `talos.boot.partuuid=<UUID>` kernel argument (probed by GRUB at boot). The detected boot partition is published as the `bootpartition` resource.
 """
 
+    [notes.selinux_workloads]
+        title = "SELinux Workload Categories"
+        description = """\
+A new `selinuxCategories` field of the `SecurityProfileConfig` document labels workloads with SELinux MCS categories,
+so that workloads sharing an SELinux type still cannot access each other's processes and files. `talosctl gen config`
+sets it for Talos 1.15+; clusters upgraded from older versions keep running their workloads without categories unless it is set.
+
+The categories are split three ways: the CRI labels pods with a random pair from `c0-c767`, containers declared via
+`ContainerConfig` get a stable pair from `c768-c1007` derived from their name, and `c1008-c1023` are reserved for Talos
+(the kube-apiserver static pod runs at `s0:c1022,c1023`, so that it keeps access to its audit log across reboots).
+
+Pods run as `pod_t`, and privileged containers as `pod_privileged_t`, which reads the host files and `/proc` and ignores the
+categories. `spc_t` is an alias of it, so charts written for Fedora and RHEL keep working. The kubelet gets
+`/sys/fs/selinux` and the containers contexts file, so that it labels volumes and its plugin directories.
+
+A pod writing files which outlive it, to a hostPath or a local volume, needs a fixed `securityContext.seLinuxOptions.level`,
+else the pod of the next start cannot read them. The CRI skips the pairs of running containers when it draws one, so
+the pair is exclusive only while the pod runs.
+"""
+
     [notes.kubespan_peer_endpoint_filters]
         title = "KubeSpan Peer Endpoint Filters"
         description = """\
@@ -284,6 +304,26 @@ If you require IPVS support, you can enable it by loading the following kernel m
 * `ip_vs` (core)
 * `ip_vs_rr`, `ip_vs_wrr`, `ip_vs_lc`, `ip_vs_sh` or `ip_vs_mh` (scheduling algorithms)
 * `xt_ipvs` (nftables/iptables match)
+"""
+
+    [notes.NetworkLinkIngressConfig]
+        title = "Allow filtering incoming packets by the destination IP and link"
+        description = """\
+A new `NetworkLinkIngressConfig` allows filtering incoming packets by link and the destination IP.
+If `destinationAddresses` is left empty, it defaults to the node addresses, plus the broadcast, multicast and IPv6 link-local addresses.
+
+```yaml
+apiVersion: v1alpha1
+kind: NetworkLinkIngressConfig
+name: enp0s2.35
+destinationAddresses:
+    - 1.2.3.4/32
+```
+
+`NetworkLinkIngressConfig` should not be used in the following scenarios:
+1. When using the Cilium CNI with the `kube-proxy` replacement
+2. With pod-to-pod network direct routing (without a tunnel like VXLAN)
+3. MetalLB (L2 or BGP), Cilium LB IPAM and kube-vip service mode all deliver packets whose destination is the LB IP so they won't work
 """
 
     [notes.lockdown]
@@ -397,6 +437,21 @@ runAs:
   uid: 1000
   gid: 1000
 ```
+"""
+
+    [notes.container_raw_volume_devices]
+        title = "ContainerConfig Raw Volume Devices"
+        description = """\
+A `RawVolumeConfig` can be handed to a container as a block device with the new `devices` field of `ContainerConfig`:
+
+```yaml
+devices:
+  - rawVolume:
+      name: data
+      destination: /dev/data
+```
+
+The container gets a device node at the destination and is allowed to read and write that device only, so it does not need the `privileged` profile. The container waits for the raw volume to be ready, gets the unlocked device for an encrypted raw volume, and the raw volume is not closed while the container runs. A raw volume can be handed to a single container.
 """
 
     [notes.extension_service_configuration]
@@ -775,6 +830,72 @@ the manifests of the machine configuration verbatim: `StaticPod`, `Manifest`, `E
 `ContainerInstanceSpec`, `Environment`, `MetaKey`, `UniqueMachineToken` and `PlatformConfig`. All of them
 support redaction, so they stay readable with any role, but a client which doesn't ask for redaction
 (including a `talosctl` older than this release) needs the `os:admin` role to read them.
+"""
+
+    [notes.kube_apiserver_webhook_kubeconfig]
+        title = "kube-apiserver Webhook Kubeconfigs"
+        description = """\
+Webhook authorization and webhook token authentication can now be configured with the Kubernetes configuration documents,
+without the `.cluster.apiServer.extraVolumes` of the legacy `v1alpha1` configuration.
+Talos renders the webhook kubeconfig into the kube-apiserver static pod, and sets the kube-apiserver configuration to point to it.
+
+`KubeAuthorizerConfig` has a new `kubeconfig` field for the `Webhook` authorizer type, and Talos sets the `webhook.connectionInfo` for it:
+
+```yaml
+apiVersion: v1alpha1
+kind: KubeAuthorizerConfig
+name: my-authorizer
+type: Webhook
+webhook:
+  timeout: 3s
+  subjectAccessReviewVersion: v1
+  matchConditionSubjectAccessReviewVersion: v1
+  failurePolicy: Deny
+kubeconfig: |
+  apiVersion: v1
+  kind: Config
+  clusters:
+    - name: my-authorizer
+      cluster:
+        server: http://127.0.0.1:9051/authorize
+  contexts:
+    - name: my-authorizer
+      context:
+        cluster: my-authorizer
+  current-context: my-authorizer
+```
+
+The new `KubeAuthenticationWebhookConfig` document configures webhook token authentication (e.g. for `aws-iam-authenticator`),
+and Talos sets the `--authentication-token-webhook-*` flags of kube-apiserver accordingly:
+
+```yaml
+apiVersion: v1alpha1
+kind: KubeAuthenticationWebhookConfig
+version: v1beta1
+cacheTTL: 5m
+kubeconfig: |
+  apiVersion: v1
+  kind: Config
+  clusters:
+    - name: aws-iam-authenticator
+      cluster:
+        server: https://127.0.0.1:21362/authenticate
+        certificate-authority-data: <base64 CA certificate>
+  contexts:
+    - name: webhook
+      context:
+        cluster: aws-iam-authenticator
+  current-context: webhook
+```
+
+The kubeconfig should be self-contained, as kube-apiserver can't access files on the host: certificates and keys should be specified inline
+(`*-data` fields), and `tokenFile`, `exec` and `auth-provider` are not supported.
+If no certificate authority is specified, kube-apiserver trusts the root CAs of the machine (including `TrustedRootsConfig`).
+Kubeconfigs are redacted from the machine configuration the same way as other secrets.
+
+As kube-apiserver can't read files from the host, a `KubeAuthorizerConfig` with `webhook.connectionInfo.type: KubeConfigFile` is now rejected,
+as well as `authentication-token-webhook-*` flags in `KubeAPIServerConfig` `extraArgs`.
+The authorizer name should be a valid DNS-1123 subdomain, as required by kube-apiserver.
 """
 
 [make_deps]

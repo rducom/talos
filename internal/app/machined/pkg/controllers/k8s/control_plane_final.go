@@ -59,6 +59,12 @@ func NewControlPlaneAPIServerFinalController() *ControlPlaneAPIServerFinalContro
 					return fmt.Errorf("failed to get kubernetes root secret: %w", err)
 				}
 
+				// authentication config is optional
+				authenticationConfig, err := safe.ReaderGetByID[*k8s.AuthenticationConfig](ctx, r, k8s.AuthenticationConfigID)
+				if err != nil && !state.IsNotFoundError(err) {
+					return fmt.Errorf("failed to get authentication config: %w", err)
+				}
+
 				// clear the spec
 				*out.TypedSpec() = k8s.APIServerConfigSpec{}
 
@@ -76,6 +82,7 @@ func NewControlPlaneAPIServerFinalController() *ControlPlaneAPIServerFinalContro
 				out.TypedSpec().Resources = cfg.Resources
 				out.TypedSpec().StartupProbesEnabled = cfg.StartupProbesEnabled
 				out.TypedSpec().UseAuthenticationConfig = cfg.UseAuthenticationConfig
+				out.TypedSpec().SELinuxLevel = cfg.SELinuxLevel
 
 				enabledAdmissionPlugins := []string{"NodeRestriction"}
 
@@ -181,6 +188,10 @@ func NewControlPlaneAPIServerFinalController() *ControlPlaneAPIServerFinalContro
 					mergePolicies["authentication-config"] = argsbuilder.MergeDenied
 				}
 
+				if authenticationConfig != nil && authenticationConfig.TypedSpec().TokenWebhook != nil {
+					setKubeAPIServerAuthenticationTokenWebhookFlags(builder, mergePolicies, authenticationConfig.TypedSpec().TokenWebhook)
+				}
+
 				if err := builder.Merge(extraArgs, argsbuilder.WithMergePolicies(mergePolicies)); err != nil {
 					return err
 				}
@@ -198,8 +209,36 @@ func NewControlPlaneAPIServerFinalController() *ControlPlaneAPIServerFinalContro
 				ID:        optional.Some(secrets.KubernetesRootID),
 				Kind:      controller.InputWeak,
 			},
+			controller.Input{
+				Namespace: k8s.ControlPlaneNamespaceName,
+				Type:      k8s.AuthenticationConfigType,
+				ID:        optional.Some(k8s.AuthenticationConfigID),
+				Kind:      controller.InputWeak,
+			},
 		),
 	)
+}
+
+// setKubeAPIServerAuthenticationTokenWebhookFlags points kube-apiserver to the authentication token webhook kubeconfig
+// rendered by RenderConfigsStaticPodController.
+func setKubeAPIServerAuthenticationTokenWebhookFlags(builder argsbuilder.Args, mergePolicies argsbuilder.MergePolicies, spec *k8s.AuthenticationTokenWebhookSpec) {
+	builder.Set("authentication-token-webhook-config-file", argsbuilder.Value{filepath.Join(constants.KubernetesAPIServerConfigDir, authenticationTokenWebhookKubeconfigFilename)})
+
+	if spec.Version != "" {
+		builder.Set("authentication-token-webhook-version", argsbuilder.Value{spec.Version})
+	}
+
+	if spec.CacheTTL != nil {
+		builder.Set("authentication-token-webhook-cache-ttl", argsbuilder.Value{spec.CacheTTL.String()})
+	}
+
+	for _, flag := range []string{
+		"authentication-token-webhook-config-file",
+		"authentication-token-webhook-version",
+		"authentication-token-webhook-cache-ttl",
+	} {
+		mergePolicies[flag] = argsbuilder.MergeDenied
+	}
 }
 
 func kubeAPIServerExtraArgsHasAuthorizationWebhookFlags(extraArgs map[string][]string) bool {

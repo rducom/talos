@@ -97,6 +97,12 @@ func (ctrl *ConfigController) reconcile(ctx context.Context, runtime controller.
 	}
 
 	if machineConfig != nil {
+		var selinuxLevels map[string]string
+
+		if securityProfile := machineConfig.Config().SecurityProfileConfig(); securityProfile != nil && securityProfile.SELinuxCategories() {
+			selinuxLevels = allocateSELinuxLevels(machineConfig.Config().ContainerConfigs())
+		}
+
 		for _, containerConfig := range machineConfig.Config().ContainerConfigs() {
 			containerSpecID := containerConfig.Name()
 
@@ -114,7 +120,13 @@ func (ctrl *ConfigController) reconcile(ctx context.Context, runtime controller.
 				ctx, runtime,
 				containers.NewContainerSpec(containers.NamespaceName, containerSpecID),
 				func(res *containers.ContainerSpec) error {
-					return applyConfig(res.TypedSpec(), containerConfig)
+					if err := applyConfig(res.TypedSpec(), containerConfig); err != nil {
+						return err
+					}
+
+					res.TypedSpec().Security.SELinuxLevel = selinuxLevels[containerSpecID]
+
+					return nil
 				},
 			); err != nil {
 				return fmt.Errorf("failed to write container spec %q: %w", containerSpecID, err)
@@ -160,6 +172,13 @@ func applyConfig(containerSpecSpec *containers.ContainerSpecSpec, containerConfi
 	}
 
 	containerSpecSpec.Mounts = containerMountSpecs
+
+	containerDeviceSpecs, err := resolveDevices(containerConfig.Devices())
+	if err != nil {
+		return err
+	}
+
+	containerSpecSpec.Devices = containerDeviceSpecs
 
 	security := containerConfig.Security()
 	containerSpecSpec.Security = containers.ContainerSecuritySpec{
@@ -246,4 +265,28 @@ func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.
 	}
 
 	return containerMountSpecs, nil
+}
+
+// resolveDevices turns typed configuration devices into device specs.
+func resolveDevices(configDevices []configcfg.ContainerDeviceConfig) ([]containers.ContainerDeviceSpec, error) {
+	if len(configDevices) == 0 {
+		return nil, nil
+	}
+
+	containerDeviceSpecs := make([]containers.ContainerDeviceSpec, 0, len(configDevices))
+
+	for i, containerDeviceConfig := range configDevices {
+		rawVolume, ok := containerDeviceConfig.RawVolume().Get()
+		if !ok {
+			return nil, fmt.Errorf("devices[%d]: no device source set", i)
+		}
+
+		containerDeviceSpecs = append(containerDeviceSpecs, containers.ContainerDeviceSpec{
+			Kind:        containers.DeviceKindRawVolume,
+			VolumeName:  rawVolume.Name(),
+			Destination: rawVolume.Destination(),
+		})
+	}
+
+	return containerDeviceSpecs, nil
 }

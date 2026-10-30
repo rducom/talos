@@ -1430,6 +1430,16 @@
           "markdownDescription": "Filesystems to mount into the container.",
           "x-intellij-html-description": "\u003cp\u003eFilesystems to mount into the container.\u003c/p\u003e\n"
         },
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/container.ContainerDevice"
+          },
+          "type": "array",
+          "title": "devices",
+          "description": "Devices to hand to the container.\n",
+          "markdownDescription": "Devices to hand to the container.",
+          "x-intellij-html-description": "\u003cp\u003eDevices to hand to the container.\u003c/p\u003e\n"
+        },
         "security": {
           "$ref": "#/$defs/container.ContainerSecurity",
           "title": "security",
@@ -1512,6 +1522,20 @@
       "additionalProperties": false,
       "type": "object",
       "description": "ContainerDependsOn gates container startup on external conditions."
+    },
+    "container.ContainerDevice": {
+      "properties": {
+        "rawVolume": {
+          "$ref": "#/$defs/container.RawVolumeDevice",
+          "title": "rawVolume",
+          "description": "Hand a raw volume to the container as a block device.\n\nThe raw volume is referenced by the name of its RawVolumeConfig document.\nThe container gets a device node at the destination and is allowed to read and write\nthat device, and no other block device. This works with the restricted profile,\nno capabilities are added. For an encrypted raw volume the node is the unlocked device.\n\nDeclaring this device makes the container wait for the raw volume to be ready, and the\nraw volume is not closed while the container is running. A raw volume can be handed to\na single container only.\n",
+          "markdownDescription": "Hand a raw volume to the container as a block device.\n\nThe raw volume is referenced by the name of its `RawVolumeConfig` document.\nThe container gets a device node at the destination and is allowed to read and write\nthat device, and no other block device. This works with the `restricted` profile,\nno capabilities are added. For an encrypted raw volume the node is the unlocked device.\n\nDeclaring this device makes the container wait for the raw volume to be ready, and the\nraw volume is not closed while the container is running. A raw volume can be handed to\na single container only.",
+          "x-intellij-html-description": "\u003cp\u003eHand a raw volume to the container as a block device.\u003c/p\u003e\n\n\u003cp\u003eThe raw volume is referenced by the name of its \u003ccode\u003eRawVolumeConfig\u003c/code\u003e document.\nThe container gets a device node at the destination and is allowed to read and write\nthat device, and no other block device. This works with the \u003ccode\u003erestricted\u003c/code\u003e profile,\nno capabilities are added. For an encrypted raw volume the node is the unlocked device.\u003c/p\u003e\n\n\u003cp\u003eDeclaring this device makes the container wait for the raw volume to be ready, and the\nraw volume is not closed while the container is running. A raw volume can be handed to\na single container only.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ContainerDevice describes a single device to hand to the container.\\n\\nExactly one source must be set.\\n"
     },
     "container.ContainerMount": {
       "properties": {
@@ -1676,6 +1700,27 @@
       "additionalProperties": false,
       "type": "object",
       "description": "HostPathMount bind-mounts a host path."
+    },
+    "container.RawVolumeDevice": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "name",
+          "description": "Name of the RawVolumeConfig document.\n",
+          "markdownDescription": "Name of the `RawVolumeConfig` document.",
+          "x-intellij-html-description": "\u003cp\u003eName of the \u003ccode\u003eRawVolumeConfig\u003c/code\u003e document.\u003c/p\u003e\n"
+        },
+        "destination": {
+          "type": "string",
+          "title": "destination",
+          "description": "Path of the device node inside the container.\n\nMust be under /dev/, and not one of the entries the container runtime creates there\nitself (e.g. /dev/null, /dev/pts). The node keeps the owner and mode of the device\non the host.\n",
+          "markdownDescription": "Path of the device node inside the container.\n\nMust be under `/dev/`, and not one of the entries the container runtime creates there\nitself (e.g. `/dev/null`, `/dev/pts`). The node keeps the owner and mode of the device\non the host.",
+          "x-intellij-html-description": "\u003cp\u003ePath of the device node inside the container.\u003c/p\u003e\n\n\u003cp\u003eMust be under \u003ccode\u003e/dev/\u003c/code\u003e, and not one of the entries the container runtime creates there\nitself (e.g. \u003ccode\u003e/dev/null\u003c/code\u003e, \u003ccode\u003e/dev/pts\u003c/code\u003e). The node keeps the owner and mode of the device\non the host.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "RawVolumeDevice hands a raw volume to the container by name."
     },
     "container.TmpfsMount": {
       "properties": {
@@ -3336,9 +3381,9 @@
           },
           "type": "object",
           "title": "extraArgs",
-          "description": "Extra command line arguments to supply to the kube-apiserver.\n\nArguments owned by other configuration documents are rejected:\nanonymous-auth, authentication-config and oidc-* are set via KubeAuthenticationConfig, while\nauthorization-config, authorization-mode and authorization-webhook-* are set via KubeAuthorizerConfig.\n\nThe single exception is oidc-signing-algs, which cannot be set at all: see KubeAuthenticationConfig.\n",
-          "markdownDescription": "Extra command line arguments to supply to the kube-apiserver.\n\nArguments owned by other configuration documents are rejected:\n`anonymous-auth`, `authentication-config` and `oidc-*` are set via `KubeAuthenticationConfig`, while\n`authorization-config`, `authorization-mode` and `authorization-webhook-*` are set via `KubeAuthorizerConfig`.\n\nThe single exception is `oidc-signing-algs`, which cannot be set at all: see `KubeAuthenticationConfig`.",
-          "x-intellij-html-description": "\u003cp\u003eExtra command line arguments to supply to the kube-apiserver.\u003c/p\u003e\n\n\u003cp\u003eArguments owned by other configuration documents are rejected:\n\u003ccode\u003eanonymous-auth\u003c/code\u003e, \u003ccode\u003eauthentication-config\u003c/code\u003e and \u003ccode\u003eoidc-*\u003c/code\u003e are set via \u003ccode\u003eKubeAuthenticationConfig\u003c/code\u003e, while\n\u003ccode\u003eauthorization-config\u003c/code\u003e, \u003ccode\u003eauthorization-mode\u003c/code\u003e and \u003ccode\u003eauthorization-webhook-*\u003c/code\u003e are set via \u003ccode\u003eKubeAuthorizerConfig\u003c/code\u003e.\u003c/p\u003e\n\n\u003cp\u003eThe single exception is \u003ccode\u003eoidc-signing-algs\u003c/code\u003e, which cannot be set at all: see \u003ccode\u003eKubeAuthenticationConfig\u003c/code\u003e.\u003c/p\u003e\n"
+          "description": "Extra command line arguments to supply to the kube-apiserver.\n\nArguments owned by other configuration documents are rejected:\nanonymous-auth, authentication-config and oidc-* are set via KubeAuthenticationConfig,\nauthentication-token-webhook-* are set via KubeAuthenticationWebhookConfig, while\nauthorization-config, authorization-mode and authorization-webhook-* are set via KubeAuthorizerConfig.\n\nThe single exception is oidc-signing-algs, which cannot be set at all: see KubeAuthenticationConfig.\n",
+          "markdownDescription": "Extra command line arguments to supply to the kube-apiserver.\n\nArguments owned by other configuration documents are rejected:\n`anonymous-auth`, `authentication-config` and `oidc-*` are set via `KubeAuthenticationConfig`,\n`authentication-token-webhook-*` are set via `KubeAuthenticationWebhookConfig`, while\n`authorization-config`, `authorization-mode` and `authorization-webhook-*` are set via `KubeAuthorizerConfig`.\n\nThe single exception is `oidc-signing-algs`, which cannot be set at all: see `KubeAuthenticationConfig`.",
+          "x-intellij-html-description": "\u003cp\u003eExtra command line arguments to supply to the kube-apiserver.\u003c/p\u003e\n\n\u003cp\u003eArguments owned by other configuration documents are rejected:\n\u003ccode\u003eanonymous-auth\u003c/code\u003e, \u003ccode\u003eauthentication-config\u003c/code\u003e and \u003ccode\u003eoidc-*\u003c/code\u003e are set via \u003ccode\u003eKubeAuthenticationConfig\u003c/code\u003e,\n\u003ccode\u003eauthentication-token-webhook-*\u003c/code\u003e are set via \u003ccode\u003eKubeAuthenticationWebhookConfig\u003c/code\u003e, while\n\u003ccode\u003eauthorization-config\u003c/code\u003e, \u003ccode\u003eauthorization-mode\u003c/code\u003e and \u003ccode\u003eauthorization-webhook-*\u003c/code\u003e are set via \u003ccode\u003eKubeAuthorizerConfig\u003c/code\u003e.\u003c/p\u003e\n\n\u003cp\u003eThe single exception is \u003ccode\u003eoidc-signing-algs\u003c/code\u003e, which cannot be set at all: see \u003ccode\u003eKubeAuthenticationConfig\u003c/code\u003e.\u003c/p\u003e\n"
         },
         "env": {
           "patternProperties": {
@@ -3563,6 +3608,61 @@
       ],
       "description": "KubeAuthenticationConfig configures kube-apiserver authentication."
     },
+    "k8s.KubeAuthenticationWebhookConfigV1Alpha1": {
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "v1alpha1"
+          ],
+          "title": "apiVersion",
+          "description": "apiVersion is the API version of the resource.\n",
+          "markdownDescription": "apiVersion is the API version of the resource.",
+          "x-intellij-html-description": "\u003cp\u003eapiVersion is the API version of the resource.\u003c/p\u003e\n"
+        },
+        "kind": {
+          "enum": [
+            "KubeAuthenticationWebhookConfig"
+          ],
+          "title": "kind",
+          "description": "kind is the kind of the resource.\n",
+          "markdownDescription": "kind is the kind of the resource.",
+          "x-intellij-html-description": "\u003cp\u003ekind is the kind of the resource.\u003c/p\u003e\n"
+        },
+        "kubeconfig": {
+          "type": "string",
+          "title": "kubeconfig",
+          "description": "Kubeconfig kube-apiserver uses to connect to the authentication webhook.\n\nThe kubeconfig should be self-contained: kube-apiserver can’t access any files on the host,\nso certificates and keys should be specified inline (certificate-authority-data, client-certificate-data,\nclient-key-data), and tokenFile, exec and auth-provider are not supported.\nIf the certificate authority is not specified, kube-apiserver uses the trusted root CAs of the machine.\n",
+          "markdownDescription": "Kubeconfig kube-apiserver uses to connect to the authentication webhook.\n\nThe kubeconfig should be self-contained: kube-apiserver can't access any files on the host,\nso certificates and keys should be specified inline (`certificate-authority-data`, `client-certificate-data`,\n`client-key-data`), and `tokenFile`, `exec` and `auth-provider` are not supported.\nIf the certificate authority is not specified, kube-apiserver uses the trusted root CAs of the machine.",
+          "x-intellij-html-description": "\u003cp\u003eKubeconfig kube-apiserver uses to connect to the authentication webhook.\u003c/p\u003e\n\n\u003cp\u003eThe kubeconfig should be self-contained: kube-apiserver can\u0026rsquo;t access any files on the host,\nso certificates and keys should be specified inline (\u003ccode\u003ecertificate-authority-data\u003c/code\u003e, \u003ccode\u003eclient-certificate-data\u003c/code\u003e,\n\u003ccode\u003eclient-key-data\u003c/code\u003e), and \u003ccode\u003etokenFile\u003c/code\u003e, \u003ccode\u003eexec\u003c/code\u003e and \u003ccode\u003eauth-provider\u003c/code\u003e are not supported.\nIf the certificate authority is not specified, kube-apiserver uses the trusted root CAs of the machine.\u003c/p\u003e\n"
+        },
+        "version": {
+          "enum": [
+            "v1",
+            "v1beta1"
+          ],
+          "title": "version",
+          "description": "The API version of the authentication.k8s.io TokenReview to send to and expect from the webhook.\n\nDefaults to the kube-apiserver default (v1beta1).\n",
+          "markdownDescription": "The API version of the `authentication.k8s.io` `TokenReview` to send to and expect from the webhook.\n\nDefaults to the kube-apiserver default (`v1beta1`).",
+          "x-intellij-html-description": "\u003cp\u003eThe API version of the \u003ccode\u003eauthentication.k8s.io\u003c/code\u003e \u003ccode\u003eTokenReview\u003c/code\u003e to send to and expect from the webhook.\u003c/p\u003e\n\n\u003cp\u003eDefaults to the kube-apiserver default (\u003ccode\u003ev1beta1\u003c/code\u003e).\u003c/p\u003e\n"
+        },
+        "cacheTTL": {
+          "type": "string",
+          "pattern": "^[-+]?(((\\d+(\\.\\d*)?|\\.\\d+|\\d+)([nuµm]?s|m|h))|0)+$",
+          "title": "cacheTTL",
+          "description": "The duration to cache responses from the webhook token authenticator.\n\nDefaults to the kube-apiserver default (2 minutes), set to 0s to disable caching.\n",
+          "markdownDescription": "The duration to cache responses from the webhook token authenticator.\n\nDefaults to the kube-apiserver default (2 minutes), set to `0s` to disable caching.",
+          "x-intellij-html-description": "\u003cp\u003eThe duration to cache responses from the webhook token authenticator.\u003c/p\u003e\n\n\u003cp\u003eDefaults to the kube-apiserver default (2 minutes), set to \u003ccode\u003e0s\u003c/code\u003e to disable caching.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "kubeconfig"
+      ],
+      "description": "KubeAuthenticationWebhookConfig configures kube-apiserver webhook token authentication.\\nBearer tokens which are not recognized by other authenticators are sent to the webhook\\n(a `TokenReview` request) to be authenticated, e.g. for\\n[aws-iam-authenticator](https://github.com/kubernetes-sigs/aws-iam-authenticator).\\n\\nTalos writes the kubeconfig to a file inside the kube-apiserver static pod and sets the\\n`--authentication-token-webhook-*` flags of kube-apiserver accordingly,\\nso these flags are not allowed in `KubeAPIServerConfig` `extraArgs`.\\n\\nSee [webhook token authentication](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#webhook-token-authentication).\\n"
+    },
     "k8s.KubeAuthorizerConfigV1Alpha1": {
       "properties": {
         "apiVersion": {
@@ -3604,9 +3704,16 @@
         "webhook": {
           "type": "object",
           "title": "webhook",
-          "description": "Webhook is the configuration for the webhook authorizer.\n\nThis field is required if the AuthorizerType is Webhook, should not be set for other authorizer types.\nThe value is the literal Kubernetes webhook authorizer configuration.\n",
-          "markdownDescription": "Webhook is the configuration for the webhook authorizer.\n\nThis field is required if the AuthorizerType is Webhook, should not be set for other authorizer types.\nThe value is the literal Kubernetes webhook authorizer configuration.",
-          "x-intellij-html-description": "\u003cp\u003eWebhook is the configuration for the webhook authorizer.\u003c/p\u003e\n\n\u003cp\u003eThis field is required if the AuthorizerType is Webhook, should not be set for other authorizer types.\nThe value is the literal Kubernetes webhook authorizer configuration.\u003c/p\u003e\n"
+          "description": "Webhook is the configuration for the webhook authorizer.\n\nThis field is required if the AuthorizerType is Webhook, should not be set for other authorizer types.\nThe value is the literal Kubernetes webhook authorizer configuration.\n\nWhen kubeconfig is set, connectionInfo should be omitted, as Talos fills it in.\n",
+          "markdownDescription": "Webhook is the configuration for the webhook authorizer.\n\nThis field is required if the AuthorizerType is Webhook, should not be set for other authorizer types.\nThe value is the literal Kubernetes webhook authorizer configuration.\n\nWhen `kubeconfig` is set, `connectionInfo` should be omitted, as Talos fills it in.",
+          "x-intellij-html-description": "\u003cp\u003eWebhook is the configuration for the webhook authorizer.\u003c/p\u003e\n\n\u003cp\u003eThis field is required if the AuthorizerType is Webhook, should not be set for other authorizer types.\nThe value is the literal Kubernetes webhook authorizer configuration.\u003c/p\u003e\n\n\u003cp\u003eWhen \u003ccode\u003ekubeconfig\u003c/code\u003e is set, \u003ccode\u003econnectionInfo\u003c/code\u003e should be omitted, as Talos fills it in.\u003c/p\u003e\n"
+        },
+        "kubeconfig": {
+          "type": "string",
+          "title": "kubeconfig",
+          "description": "Kubeconfig kube-apiserver uses to connect to the webhook authorizer.\n\nTalos writes the kubeconfig to a file inside the kube-apiserver static pod and sets\nwebhook.connectionInfo to type: KubeConfigFile pointing to that file.\nThis field can only be set for the Webhook authorizer type.\n\nThe kubeconfig should be self-contained: kube-apiserver can’t access any files on the host,\nso certificates and keys should be specified inline (certificate-authority-data, client-certificate-data,\nclient-key-data), and tokenFile, exec and auth-provider are not supported.\nIf the certificate authority is not specified, kube-apiserver uses the trusted root CAs of the machine.\n",
+          "markdownDescription": "Kubeconfig kube-apiserver uses to connect to the webhook authorizer.\n\nTalos writes the kubeconfig to a file inside the kube-apiserver static pod and sets\n`webhook.connectionInfo` to `type: KubeConfigFile` pointing to that file.\nThis field can only be set for the Webhook authorizer type.\n\nThe kubeconfig should be self-contained: kube-apiserver can't access any files on the host,\nso certificates and keys should be specified inline (`certificate-authority-data`, `client-certificate-data`,\n`client-key-data`), and `tokenFile`, `exec` and `auth-provider` are not supported.\nIf the certificate authority is not specified, kube-apiserver uses the trusted root CAs of the machine.",
+          "x-intellij-html-description": "\u003cp\u003eKubeconfig kube-apiserver uses to connect to the webhook authorizer.\u003c/p\u003e\n\n\u003cp\u003eTalos writes the kubeconfig to a file inside the kube-apiserver static pod and sets\n\u003ccode\u003ewebhook.connectionInfo\u003c/code\u003e to \u003ccode\u003etype: KubeConfigFile\u003c/code\u003e pointing to that file.\nThis field can only be set for the Webhook authorizer type.\u003c/p\u003e\n\n\u003cp\u003eThe kubeconfig should be self-contained: kube-apiserver can\u0026rsquo;t access any files on the host,\nso certificates and keys should be specified inline (\u003ccode\u003ecertificate-authority-data\u003c/code\u003e, \u003ccode\u003eclient-certificate-data\u003c/code\u003e,\n\u003ccode\u003eclient-key-data\u003c/code\u003e), and \u003ccode\u003etokenFile\u003c/code\u003e, \u003ccode\u003eexec\u003c/code\u003e and \u003ccode\u003eauth-provider\u003c/code\u003e are not supported.\nIf the certificate authority is not specified, kube-apiserver uses the trusted root CAs of the machine.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -6544,6 +6651,54 @@
       ],
       "description": "LinkConfig is a config document to configure physical interfaces (network links)."
     },
+    "network.LinkIngressConfigV1Alpha1": {
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "v1alpha1"
+          ],
+          "title": "apiVersion",
+          "description": "apiVersion is the API version of the resource.\n",
+          "markdownDescription": "apiVersion is the API version of the resource.",
+          "x-intellij-html-description": "\u003cp\u003eapiVersion is the API version of the resource.\u003c/p\u003e\n"
+        },
+        "kind": {
+          "enum": [
+            "NetworkLinkIngressConfig"
+          ],
+          "title": "kind",
+          "description": "kind is the kind of the resource.\n",
+          "markdownDescription": "kind is the kind of the resource.",
+          "x-intellij-html-description": "\u003cp\u003ekind is the kind of the resource.\u003c/p\u003e\n"
+        },
+        "name": {
+          "type": "string",
+          "title": "name",
+          "description": "Name of the link (interface) to filter the incoming packets on.\n",
+          "markdownDescription": "Name of the link (interface) to filter the incoming packets on.",
+          "x-intellij-html-description": "\u003cp\u003eName of the link (interface) to filter the incoming packets on.\u003c/p\u003e\n"
+        },
+        "destinationAddresses": {
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f.:]+/\\d{1,3}$"
+          },
+          "type": "array",
+          "title": "destinationAddresses",
+          "description": "Destination addresses to accept on this link, as a list of CIDRs.\n\nThis is an override: when specified, only packets destined to one of these addresses are\naccepted, and neither the node’s own addresses nor the broadcast, multicast and link-local\naddresses are implicitly allowed.\n\nAn empty list allows no destination at all, i.e. all packets arriving on the link are\ndropped.\n\nDefault value: the node’s own addresses, the broadcast addresses of their IPv4 subnets,\n255.255.255.255/32, 224.0.0.0/4, ff00::/8 and fe80::/10.\n",
+          "markdownDescription": "Destination addresses to accept on this link, as a list of CIDRs.\n\nThis is an override: when specified, only packets destined to one of these addresses are\naccepted, and neither the node's own addresses nor the broadcast, multicast and link-local\naddresses are implicitly allowed.\n\nAn empty list allows no destination at all, i.e. all packets arriving on the link are\ndropped.\n\nDefault value: the node's own addresses, the broadcast addresses of their IPv4 subnets,\n`255.255.255.255/32`, `224.0.0.0/4`, `ff00::/8` and `fe80::/10`.",
+          "x-intellij-html-description": "\u003cp\u003eDestination addresses to accept on this link, as a list of CIDRs.\u003c/p\u003e\n\n\u003cp\u003eThis is an override: when specified, only packets destined to one of these addresses are\naccepted, and neither the node\u0026rsquo;s own addresses nor the broadcast, multicast and link-local\naddresses are implicitly allowed.\u003c/p\u003e\n\n\u003cp\u003eAn empty list allows no destination at all, i.e. all packets arriving on the link are\ndropped.\u003c/p\u003e\n\n\u003cp\u003eDefault value: the node\u0026rsquo;s own addresses, the broadcast addresses of their IPv4 subnets,\n\u003ccode\u003e255.255.255.255/32\u003c/code\u003e, \u003ccode\u003e224.0.0.0/4\u003c/code\u003e, \u003ccode\u003eff00::/8\u003c/code\u003e and \u003ccode\u003efe80::/10\u003c/code\u003e.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind",
+        "name"
+      ],
+      "description": "NetworkLinkIngressConfig is a config document to filter out the packets coming into the system based on destination IP and interface.\\nFilters incoming packets on a link by destination address: only packets destined to one of\\nthe node's own addresses are accepted, anything else is dropped.\\nThis is meant for clusters using an encapsulating CNI, where pod/service CIDR destinations should never\\narrive unencapsulated on an external interface; it is incompatible with native pod IP routing (e.g. BGP).\\n\\nThe set of accepted destinations can be overridden with the `destinationAddresses` option.\\n"
+    },
     "network.LinkSelector": {
       "properties": {
         "match": {
@@ -8389,6 +8544,13 @@
           "description": "Ignore Ctrl-Alt-Delete instead of rebooting the machine.\n",
           "markdownDescription": "Ignore Ctrl-Alt-Delete instead of rebooting the machine.",
           "x-intellij-html-description": "\u003cp\u003eIgnore Ctrl-Alt-Delete instead of rebooting the machine.\u003c/p\u003e\n"
+        },
+        "selinuxCategories": {
+          "type": "boolean",
+          "title": "selinuxCategories",
+          "description": "Label workloads with SELinux MCS categories, split between the CRI, Talos containers and Talos itself.\n",
+          "markdownDescription": "Label workloads with SELinux MCS categories, split between the CRI, Talos containers and Talos itself.",
+          "x-intellij-html-description": "\u003cp\u003eLabel workloads with SELinux MCS categories, split between the CRI, Talos containers and Talos itself.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -8397,7 +8559,7 @@
         "apiVersion",
         "kind"
       ],
-      "description": "SecurityProfileConfig is a node security profile configuration document.\\nThe security profile groups node-level security hardening features. Additional hardening options\\nwill be added to this document over time.\\n\\nWorkload isolation runs the container runtime plane (CRI containerd, the kubelet, and all pods)\\ninside a dedicated PID and mount namespace anchored by the `sandboxd` service, isolating them from\\n`machined` (PID 1) and its file descriptors.\\n\\n`talosctl gen config` emits this document with `workloadIsolation: true` for Talos 1.14+, so new\\nclusters are isolated by default; clusters upgraded from older versions do not have the document and\\nkeep the old (non-isolated) behavior unless it is added.\\n\\nNote: with workload isolation enabled, the deprecated in-tree Kubernetes iSCSI volume plugin does not\\nwork (the kubelet cannot reach the host iscsid across the sandbox); use a CSI driver instead.\\n\\nBy default, Ctrl-Alt-Delete reboots the machine. With `ignoreCtrlAltDelete: true`, Ctrl-Alt-Delete\\nis logged and ignored. Ctrl-Alt-Delete still reboots the machine until a configuration with this\\noption is applied. The option has no effect in container mode.\\n"
+      "description": "SecurityProfileConfig is a node security profile configuration document.\\nThe security profile groups node-level security hardening features. Additional hardening options\\nwill be added to this document over time.\\n\\nWorkload isolation runs the container runtime plane (CRI containerd, the kubelet, and all pods)\\ninside a dedicated PID and mount namespace anchored by the `sandboxd` service, isolating them from\\n`machined` (PID 1) and its file descriptors.\\n\\n`talosctl gen config` emits this document with `workloadIsolation: true` for Talos 1.14+, so new\\nclusters are isolated by default; clusters upgraded from older versions do not have the document and\\nkeep the old (non-isolated) behavior unless it is added.\\n\\nNote: with workload isolation enabled, the deprecated in-tree Kubernetes iSCSI volume plugin does not\\nwork (the kubelet cannot reach the host iscsid across the sandbox); use a CSI driver instead.\\n\\nSELinux categories split the MCS categories between the workloads: the CRI labels Kubernetes containers\\nwith a random pair drawn from `c0-c767`, containers declared via `ContainerConfig` get a stable pair\\nfrom `c768-c1007` derived from their name, and `c1008-c1023` are reserved for Talos (the kube-apiserver\\nstatic pod runs at `s0:c1022,c1023`). Workloads with different categories cannot access each other's\\nprocesses and files, even when they share an SELinux type. The kubelet gets `/sys/fs/selinux` and the\\ncontainers contexts file, so that it labels volumes and its plugin directories.\\n\\n`talosctl gen config` emits this document with `selinuxCategories: true` for Talos 1.15+; clusters\\nupgraded from older versions keep running their workloads without categories unless it is set.\\nThe categories only take effect when SELinux is enabled.\\n\\nBy default, Ctrl-Alt-Delete reboots the machine. With `ignoreCtrlAltDelete: true`, Ctrl-Alt-Delete\\nis logged and ignored. Ctrl-Alt-Delete still reboots the machine until a configuration with this\\noption is applied. The option has no effect in container mode.\\n"
     },
     "runtime.SysctlConfigV1Alpha1": {
       "properties": {
@@ -9560,6 +9722,9 @@
       "$ref": "#/$defs/k8s.KubeAuthenticationConfigV1Alpha1"
     },
     {
+      "$ref": "#/$defs/k8s.KubeAuthenticationWebhookConfigV1Alpha1"
+    },
+    {
       "$ref": "#/$defs/k8s.KubeAuthorizerConfigV1Alpha1"
     },
     {
@@ -9663,6 +9828,9 @@
     },
     {
       "$ref": "#/$defs/network.LinkAliasConfigV1Alpha1"
+    },
+    {
+      "$ref": "#/$defs/network.LinkIngressConfigV1Alpha1"
     },
     {
       "$ref": "#/$defs/network.MacVLANConfigV1Alpha1"
