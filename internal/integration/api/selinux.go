@@ -30,14 +30,17 @@ import (
 
 	"github.com/siderolabs/talos/cmd/talosctl/pkg/talos/helpers"
 	"github.com/siderolabs/talos/internal/integration/base"
+	"github.com/siderolabs/talos/internal/pkg/selinux/extgen"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	machineapi "github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/config/machine"
 	runtimeconfig "github.com/siderolabs/talos/pkg/machinery/config/types/runtime"
+	"github.com/siderolabs/talos/pkg/machinery/config/types/runtime/extensions"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	runtimeres "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
+	"github.com/siderolabs/talos/pkg/machinery/resources/v1alpha1"
 )
 
 // SELinuxSuite ...
@@ -95,8 +98,7 @@ func (suite *SELinuxSuite) SetupSuite() {
 		rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.State(), runtimeres.SELinuxPolicyStatusID,
 			func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
 				for name := range podModules {
-					asrt.Contains(status.TypedSpec().Modules, name)
-					asrt.NotContains(status.TypedSpec().Error, name)
+					asrt.Contains(status.TypedSpec().Loaded, runtimeres.SELinuxModuleConfigPrefix+name)
 				}
 			})
 	})
@@ -141,7 +143,7 @@ func (suite *SELinuxSuite) getLabel(nodeCtx context.Context, pid int32) string {
 
 	suite.Require().NoError(r.Close())
 
-	return string(bytes.TrimSpace(value))
+	return string(bytes.Trim(value, " \n\x00"))
 }
 
 // TestFileMountLabels reads labels of runtime-created files and mounts from xattrs
@@ -190,6 +192,12 @@ func (suite *SELinuxSuite) TestFileMountLabels() {
 		constants.SystemEtcPath: constants.EtcSelinuxLabel,
 		// Build-time files
 		"/usr/share/containers/selinux/contexts": "system_u:object_r:usr_t:s0",
+	}
+
+	if suite.extensionsInstalled(client.WithNode(suite.ctx, suite.RandomDiscoveredNodeInternalIP())) {
+		// the imager labels the extension layers with the file_contexts of the rootfs; the service rootfs directories
+		// under /usr/local/lib/containers carry the label of the overlay machined mounts on them instead
+		expectedLabelsWorker[constants.ExtensionServiceConfigPath] = "system_u:object_r:usr_t:s0"
 	}
 
 	// Only running on controlplane
@@ -253,13 +261,6 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 			suite.T().Skip("skipping SELinux test since SELinux is disabled")
 		}
 
-		extensions, err := safe.StateListAll[*runtimeres.ExtensionStatus](nodeCtx, suite.Client.State())
-		suite.Require().NoError(err)
-
-		if extensions.Len() > 0 {
-			suite.T().Skip("skipping SELinux test since extensions are running")
-		}
-
 		for path, label := range expectedLabels {
 			req := &machineapi.ListRequest{
 				Root:         path,
@@ -286,21 +287,6 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 					}, kubeletPluginDirs...),
 					path,
 				) && info.Name != path {
-					return nil
-				}
-
-				// these are symlinks that comes from files from extensions, and we don't set xattrs for extensions yet
-				// TODO(frezbo): update the test to check for correct labels once we set xattrs for extensions
-				switch info.Name {
-				case "/etc/ld.so.conf", "/etc/ld.so.cache":
-					return nil
-				case "/usr/bin/nvidia-smi":
-					return nil
-				case "/usr/bin/nvidia-ctk":
-					return nil
-				case "/usr/bin/nvidia-cdi-hook":
-					return nil
-				case "/usr/bin/nvme":
 					return nil
 				}
 
@@ -334,6 +320,13 @@ func (suite *SELinuxSuite) checkFileLabels(nodes []string, expectedLabels map[st
 			}
 		}
 	}
+}
+
+func (suite *SELinuxSuite) extensionsInstalled(nodeCtx context.Context) bool {
+	extensions, err := safe.StateListAll[*runtimeres.ExtensionStatus](nodeCtx, suite.Client.State())
+	suite.Require().NoError(err)
+
+	return extensions.Len() > 0
 }
 
 // TestProcessLabels reads labels of system processes from procfs
@@ -490,7 +483,7 @@ func (suite *SELinuxSuite) withSELinuxCategoriesLabels(node string, expectedLabe
 	return expectedLabels
 }
 
-// fileLabel returns the SELinux label of a file.
+// fileLabel returns the SELinux label of a path on the node.
 func (suite *SELinuxSuite) fileLabel(nodeCtx context.Context, path string) string {
 	stream, err := suite.Client.LS(nodeCtx, &machineapi.ListRequest{Root: path, ReportXattrs: true})
 	suite.Require().NoError(err)
@@ -498,6 +491,11 @@ func (suite *SELinuxSuite) fileLabel(nodeCtx context.Context, path string) strin
 	var label string
 
 	suite.Require().NoError(helpers.ReadGRPCStream(stream, func(info *machineapi.FileInfo, _ string, _ bool) error {
+		// LS on a directory also returns its entries
+		if info.Name != path {
+			return nil
+		}
+
 		for _, xattr := range info.Xattrs {
 			if xattr.Name == "security.selinux" {
 				label = string(bytes.Trim(xattr.Data, "\x00\n"))
@@ -821,7 +819,214 @@ func (suite *SELinuxSuite) TestNoHostDenials() {
 	}
 }
 
-// TODO: test labels for unconfined system extensions
+// extensionServicePID returns the PID of a running extension service, once it differs from the previous one.
+func (suite *SELinuxSuite) extensionServicePID(nodeCtx context.Context, id string, previous int32) int32 {
+	var pid int32
+
+	suite.Require().NoError(retry.Constant(2*time.Minute, retry.WithUnits(time.Second)).Retry(func() error {
+		res, err := safe.StateGetByID[*runtimeres.ServicePID](nodeCtx, suite.Client.State(), id)
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		if pid = res.TypedSpec().PID; pid == previous {
+			return retry.ExpectedErrorf("%s: not restarted yet", id)
+		}
+
+		return nil
+	}))
+
+	return pid
+}
+
+// waitForExtensionServiceEvent waits for the last event of an extension service to carry the message.
+func (suite *SELinuxSuite) waitForExtensionServiceEvent(nodeCtx context.Context, id, message string) {
+	suite.Require().NoError(retry.Constant(2*time.Minute, retry.WithUnits(time.Second)).Retry(func() error {
+		info, err := suite.Client.ServiceInfo(nodeCtx, id)
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		events := info[0].Service.Events.Events
+		if len(events) == 0 || !strings.Contains(events[len(events)-1].Msg, message) {
+			return retry.ExpectedErrorf("%s: last event is not %q", id, message)
+		}
+
+		return nil
+	}))
+}
+
+// containerExtensionService returns the name and the PID of a running extension service in container mode, and skips the
+// test without one.
+func (suite *SELinuxSuite) containerExtensionService(nodeCtx context.Context) (string, int32) {
+	if pointer.SafeDeref(procfs.NewCmdline(suite.ReadCmdline(nodeCtx)).Get(constants.KernelParamSELinux).First()) == "" {
+		suite.T().Skip("skipping SELinux test since SELinux is disabled")
+	}
+
+	if !suite.extensionsInstalled(nodeCtx) {
+		suite.T().Skip("skipping SELinux test since no extension is installed")
+	}
+
+	var (
+		name string
+		pid  int32
+	)
+
+	// a previous test may have left the services restarting
+	err := retry.Constant(2*time.Minute, retry.WithUnits(2*time.Second)).Retry(func() error {
+		services, err := safe.StateListAll[*v1alpha1.Service](nodeCtx, suite.Client.State())
+		if err != nil {
+			return retry.ExpectedError(err)
+		}
+
+		for svc := range services.All() {
+			if !strings.HasPrefix(svc.Metadata().ID(), "ext-") || !svc.TypedSpec().Running {
+				continue
+			}
+
+			res, err := safe.StateGetByID[*runtimeres.ServicePID](nodeCtx, suite.Client.State(), svc.Metadata().ID())
+			if err != nil {
+				continue
+			}
+
+			// services in host mode keep their domain
+			if pid = res.TypedSpec().PID; suite.getLabel(nodeCtx, pid) != constants.SelinuxLabelUnconfinedService {
+				name = strings.TrimPrefix(svc.Metadata().ID(), "ext-")
+
+				return nil
+			}
+		}
+
+		return retry.ExpectedErrorf("no extension service running in container mode")
+	})
+	if err != nil {
+		suite.T().Skip("skipping SELinux test since no extension service runs in container mode")
+	}
+
+	return name, pid
+}
+
+// TestExtensionServiceDomains checks the domain of the extension services in container mode: the type their module derives
+// from the spec, with their state directories labeled for them, unless the machine config selects another type; an unknown
+// type fails the service with a readable error; a module contradicting a neverallow of the config is rejected without
+// touching the loaded policy.
+//
+//nolint:gocyclo
+func (suite *SELinuxSuite) TestExtensionServiceDomains() {
+	node := suite.RandomDiscoveredNodeInternalIP()
+	nodeCtx := client.WithNode(suite.ctx, node)
+
+	name, pid := suite.containerExtensionService(nodeCtx)
+	id, typ := "ext-"+name, extgen.TypeName(name)
+
+	suite.Assert().Equal(selinuxLabel(typ), suite.getLabel(nodeCtx, pid))
+
+	// the rootfs the service runs from is one type, the files of the image and the mount points runc creates alike
+	rootfs := filepath.Join(constants.ExtensionServiceRootfsPath, name)
+
+	for _, path := range []string{rootfs, filepath.Join(rootfs, "etc", "hosts")} {
+		suite.Assert().Equal("system_u:object_r:"+constants.SELinuxTypeExtensionRootfs+":s0", suite.fileLabel(nodeCtx, path), path)
+	}
+
+	module, err := safe.StateGetByID[*runtimeres.SELinuxModule](nodeCtx, suite.Client.State(), id)
+	suite.Require().NoError(err)
+
+	for source, stateType := range module.TypedSpec().Labels {
+		suite.Assert().Equal("system_u:object_r:"+stateType+":s0", suite.fileLabel(nodeCtx, source), source)
+	}
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.State(), runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Modules, id)
+		asrt.Empty(status.TypedSpec().Error)
+	})
+
+	cfg := extensions.NewServicesConfigV1Alpha1()
+	cfg.ServiceName = name
+	cfg.ServiceSELinux = &extensions.ServiceSELinux{SELinuxType: "ext_privileged_t"}
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+	suite.Assert().Equal(selinuxLabel("ext_privileged_t"), suite.getLabel(nodeCtx, pid))
+
+	// a type no module declares yet: the service waits for it, and starts by itself once a module declares it
+	cfg.ServiceSELinux.SELinuxType = "ext_declared_later_t"
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+	suite.waitForExtensionServiceEvent(nodeCtx, id, "selinux type ext_declared_later_t")
+
+	declared := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("declared-later")
+	declared.PolicyContent = "(type ext_declared_later_t)\n(call ext_privileged_domain (ext_declared_later_t))\n"
+
+	suite.PatchMachineConfig(nodeCtx, declared)
+
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+	suite.Assert().Equal(selinuxLabel("ext_declared_later_t"), suite.getLabel(nodeCtx, pid))
+
+	// the service leaves the type before its module goes
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+	suite.Assert().Equal(selinuxLabel(typ), suite.getLabel(nodeCtx, pid))
+
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "declared-later")
+
+	// a ceiling every extension domain contradicts: the compile fails, the service keeps running with the loaded policy
+	ceiling := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("ceiling")
+	ceiling.PolicyContent = "(neverallow extension_p usr_t (file (execute)))\n"
+
+	suite.PatchMachineConfig(nodeCtx, ceiling)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "ceiling")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.State(), runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Modules, "config-ceiling")
+		asrt.NotContains(status.TypedSpec().Loaded, "config-ceiling")
+		asrt.Contains(status.TypedSpec().Loaded, id)
+		asrt.Contains(status.TypedSpec().Error, "module config-ceiling rejected")
+		asrt.Contains(status.TypedSpec().Error, "neverallow check failed")
+	})
+
+	suite.Assert().Equal(selinuxLabel(typ), suite.getLabel(nodeCtx, pid))
+
+	// the rejected document takes nothing else down: a module declared beside it is loaded, the service selects its type
+	beside := runtimeconfig.NewSELinuxPolicyConfigV1Alpha1("beside-ceiling")
+	beside.PolicyContent = "(type ext_beside_t)\n(call ext_privileged_domain (ext_beside_t))\n"
+
+	suite.PatchMachineConfig(nodeCtx, beside)
+
+	defer suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "beside-ceiling")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.State(), runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Loaded, "config-beside-ceiling")
+		asrt.NotContains(status.TypedSpec().Loaded, "config-ceiling")
+	})
+
+	cfg.ServiceSELinux.SELinuxType = "ext_beside_t"
+
+	suite.PatchMachineConfig(nodeCtx, cfg)
+
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+	suite.Assert().Equal(selinuxLabel("ext_beside_t"), suite.getLabel(nodeCtx, pid))
+
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, extensions.ServiceConfigKind, name)
+
+	pid = suite.extensionServicePID(nodeCtx, id, pid)
+	suite.Assert().Equal(selinuxLabel(typ), suite.getLabel(nodeCtx, pid))
+
+	suite.RemoveMachineConfigDocumentsByName(nodeCtx, runtimeconfig.SELinuxPolicyConfigKind, "ceiling")
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.State(), runtimeres.SELinuxPolicyStatusID, func(status *runtimeres.SELinuxPolicyStatus, asrt *assert.Assertions) {
+		asrt.NotContains(status.TypedSpec().Modules, "config-ceiling")
+		asrt.Empty(status.TypedSpec().Error)
+	})
+}
+
+func selinuxLabel(typ string) string {
+	return "system_u:system_r:" + typ + ":s0"
+}
 
 // TestNoPtrace confirms ptracing system processes is prohibited in enforcing mode.
 func (suite *SELinuxSuite) TestNoPtrace() {

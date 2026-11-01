@@ -675,6 +675,8 @@ description: Talos gRPC API reference.
     - [PlatformMetadataSpec](#talos.resource.definitions.runtime.PlatformMetadataSpec)
     - [PlatformMetadataSpec.TagsEntry](#talos.resource.definitions.runtime.PlatformMetadataSpec.TagsEntry)
     - [SBOMItemSpec](#talos.resource.definitions.runtime.SBOMItemSpec)
+    - [SELinuxModuleSpec](#talos.resource.definitions.runtime.SELinuxModuleSpec)
+    - [SELinuxModuleSpec.LabelsEntry](#talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry)
     - [SELinuxPolicyStatusSpec](#talos.resource.definitions.runtime.SELinuxPolicyStatusSpec)
     - [SecurityStateSpec](#talos.resource.definitions.runtime.SecurityStateSpec)
     - [ServicePIDSpec](#talos.resource.definitions.runtime.ServicePIDSpec)
@@ -11390,6 +11392,7 @@ ExtensionServiceConfigSpec describes status of rendered extensions service confi
 | ----- | ---- | ----- | ----------- |
 | files | [ExtensionServiceConfigFile](#talos.resource.definitions.runtime.ExtensionServiceConfigFile) | repeated |  |
 | environment | [string](#string) | repeated |  |
+| se_linux_type | [string](#string) |  | SELinuxType is the type the service runs as, empty to let Talos choose it. |
 
 
 
@@ -11737,6 +11740,40 @@ SBOMItemSpec describes the SBOM item resource properties.
 
 
 
+<a name="talos.resource.definitions.runtime.SELinuxModuleSpec"></a>
+
+### SELinuxModuleSpec
+SELinuxModuleSpec describes the SELinuxModule resource.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| content | [string](#string) |  | Content is the module in CIL. |
+| labels | [SELinuxModuleSpec.LabelsEntry](#talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry) | repeated | Labels are the types machined gives the state directories of an extension service, by mount source, once the module is loaded. |
+| warnings | [string](#string) | repeated | Warnings lists what could not be derived from the service spec. |
+| type | [string](#string) |  | Type is the domain the module declares for an extension service, empty for a document of the machine config. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.runtime.SELinuxModuleSpec.LabelsEntry"></a>
+
+### SELinuxModuleSpec.LabelsEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="talos.resource.definitions.runtime.SELinuxPolicyStatusSpec"></a>
 
 ### SELinuxPolicyStatusSpec
@@ -11745,8 +11782,9 @@ SELinuxPolicyStatusSpec describes the SELinuxPolicyStatus resource.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| modules | [string](#string) | repeated | Modules are the SELinuxPolicyConfig documents of the machine config at the last reconcile. |
+| modules | [string](#string) | repeated | Modules are the SELinuxModule resources at the last reconcile. |
 | error | [string](#string) |  | Error names the modules the compiler rejected at the last reconcile, with its error; the other modules are loaded. |
+| loaded | [string](#string) | repeated | Loaded are the modules compiled into the policy the kernel runs: the last set accepted, Modules unless Error is set. |
 
 
 

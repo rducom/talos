@@ -25,6 +25,8 @@ type ExtensionServiceConfig = typed.Resource[ExtensionServiceConfigSpec, Extensi
 type ExtensionServiceConfigSpec struct {
 	Files       []ExtensionServiceConfigFile `yaml:"files,omitempty" protobuf:"1"`
 	Environment []string                     `yaml:"environment,omitempty" protobuf:"2"`
+	// SELinuxType is the type the service runs as, empty to let Talos choose it.
+	SELinuxType string `yaml:"selinuxType,omitempty" protobuf:"3"`
 }
 
 // ExtensionServiceConfigFile describes extensions service config files.

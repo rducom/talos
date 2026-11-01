@@ -56,6 +56,11 @@ func (builder *Builder) Build(ctx context.Context) error {
 		return err
 	}
 
+	selinuxModules, err := builder.deriveSELinux(extensionsList)
+	if err != nil {
+		return err
+	}
+
 	extensionPathsWithKernelModules := findExtensionsWithKernelModules(extensionsList, builder.Quirks)
 
 	if len(extensionPathsWithKernelModules) > 0 {
@@ -83,6 +88,15 @@ func (builder *Builder) Build(ctx context.Context) error {
 	}
 
 	defer os.RemoveAll(tempDir) //nolint:errcheck
+
+	if len(selinuxModules) > 0 {
+		selinuxExtension, genErr := extensions.GenerateSELinuxPolicyExtension(ctx, selinuxModules, builder.InitramfsPath, tempDir, builder.Printf)
+		if genErr != nil {
+			return genErr
+		}
+
+		extensionsList = append(extensionsList, selinuxExtension)
+	}
 
 	var cfg *extinterface.Config
 
