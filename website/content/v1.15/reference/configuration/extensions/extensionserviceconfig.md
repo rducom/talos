@@ -66,6 +66,7 @@ ServiceSELinux is the SELinux settings of an extension service.
 |`type` |string |SELinux type the service runs as, in place of the type Talos derives from the service spec.<br>`ext_t` and `ext_privileged_t` come with the base policy, any other is declared by a SELinuxPolicyConfig<br>document with the `ext_domain` or `ext_privileged_domain` macro. The service waits for the type to be defined<br>in the loaded policy before it starts: `talosctl service ext-<name>` says so.<br>The state directories keep the types derived from the spec, `ext_<name>_state_t` and `ext_<name>_run_t`:<br>`ext_t` and `ext_privileged_t` reach the state of every service, a type of a document what it is allowed. <details><summary>Show example(s)</summary>{{< highlight yaml >}}
 type: ext_privileged_t
 {{< /highlight >}}</details> | |
+|`audit` |bool |Observe the permissions the service exercises: the SELinuxDomainStatus of its type lists the accesses the<br>policy grants it, exercised or not since the audit began, and a policy module narrowed to the exercised ones.<br>The service restarts when the flag is set, so that the accesses of its start are observed.  | |
 
 
 
