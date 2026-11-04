@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/containerd/containerd/v2/core/containers"
 	"github.com/containerd/containerd/v2/pkg/oci"
@@ -44,11 +45,26 @@ type Extension struct {
 
 	overlayUnmounter    func() error
 	preShutdownRunnerFn func(bool, *runner.Args, ...runner.Option) runner.Runner
+
+	// configVersion is the SpecVersion of the ExtensionServiceConfigStatus the last runner was created with, empty
+	// without a config, nil until the service creates a runner.
+	configVersion atomic.Pointer[string]
 }
 
 // ID implements the Service interface.
 func (svc *Extension) ID(r runtime.Runtime) string {
 	return "ext-" + svc.Spec.Name
+}
+
+// ConfigVersion returns the SpecVersion of the ExtensionServiceConfigStatus the last runner of the service was created
+// with, empty when the service had no config, and false until the service creates a runner.
+func (svc *Extension) ConfigVersion() (string, bool) {
+	version := svc.configVersion.Load()
+	if version == nil {
+		return "", false
+	}
+
+	return *version, true
 }
 
 // PreFunc implements the Service interface.
@@ -280,6 +296,17 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 
 	mounts := append([]specs.Mount{}, svc.Spec.Container.Mounts...)
 
+	// the status is written once the config files are, so reading it before the config means that the config applied
+	// below is at least as recent as the version recorded for it
+	var configVersion string
+
+	configStatus, err := safe.StateGetByID[*runtimeres.ExtensionServiceConfigStatus](context.Background(), r.State().V1Alpha2().Resources(), svc.Spec.Name)
+	if err == nil {
+		configVersion = configStatus.TypedSpec().SpecVersion
+	} else if !state.IsNotFoundError(err) {
+		return nil, err
+	}
+
 	configSpec, err := safe.StateGetByID[*runtimeres.ExtensionServiceConfig](context.Background(), r.State().V1Alpha2().Resources(), svc.Spec.Name)
 	if err == nil {
 		mounts, envVars, err = svc.applyExtensionServiceConfig(configSpec.TypedSpec(), mounts, envVars)
@@ -289,6 +316,8 @@ func (svc *Extension) Runner(r runtime.Runtime) (runner.Runner, error) {
 	} else if !state.IsNotFoundError(err) {
 		return nil, err
 	}
+
+	svc.configVersion.Store(&configVersion)
 
 	var restartType restart.Type
 

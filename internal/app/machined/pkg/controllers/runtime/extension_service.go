@@ -172,7 +172,7 @@ func (ctrl *ExtensionServiceController) Run(ctx context.Context, r controller.Ru
 		// cleanup configStatusesCache
 		for id := range ctrl.configStatusCache {
 			if _, ok := configStatusesPresent[id]; !ok {
-				if err = ctrl.handleRestart(ctx, logger, "ext-"+id, "nan"); err != nil {
+				if err = ctrl.handleRestart(ctx, logger, "ext-"+id, ""); err != nil {
 					return err
 				}
 
@@ -199,16 +199,27 @@ func (ctrl *ExtensionServiceController) loadSpec(path string) (extservices.Spec,
 	return spec, nil
 }
 
+// configuredService is a service which applies its config when it creates its runner, such as services.Extension.
+type configuredService interface {
+	// ConfigVersion returns the version of the config the last runner was created with, and false until a runner is
+	// created.
+	ConfigVersion() (string, bool)
+}
+
+// handleRestart starts a service, or restarts it if it runs, when its config changed to specVersion, empty when it
+// has none.
 func (ctrl *ExtensionServiceController) handleRestart(ctx context.Context, logger *zap.Logger, svcName, specVersion string) error {
-	_, running, err := ctrl.V1Alpha1Services.IsRunning(svcName)
+	svc, running, err := ctrl.V1Alpha1Services.IsRunning(svcName)
 	if err != nil {
 		return nil //nolint:nilerr // IsRunning returns an error only if the service is not found, so ignore it
 	}
 
-	// this means it's a new config and the service runner is already waiting for the config to start the service
-	// we don't need restart it again since it will be started automatically
-	if running && specVersion == "1" {
-		return nil
+	// a running service which has not created its runner yet will apply this config, and one whose runner was created
+	// with it runs it already
+	if configured, ok := svc.(configuredService); ok && running {
+		if version, created := configured.ConfigVersion(); !created || version == specVersion {
+			return nil
+		}
 	}
 
 	logger.Warn("extension service config changed, restarting", zap.String("service", svcName))
