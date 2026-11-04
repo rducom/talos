@@ -233,15 +233,28 @@ func generate(spec extservices.Spec, rules []fcontext.Rule, sharers func(string)
 	}
 
 	// a pod reaching the service through its state, the way a CSI driver talks to a storage daemon, needs the state
-	// types and the socket of the service, which pod_domain does not grant
+	// types and the socket of the service, which a boolean of the service grants the client domains
+	var clientRules strings.Builder
+
 	for _, kind := range []Kind{KindState, KindRun} {
 		if states[kind] {
-			module.Content += fmt.Sprintf("; a pod domain reaching the service: (allow <pod_type> %s (fs_classes (rw))) (allow <pod_type> %s (unix_stream_socket (connectto)))\n",
-				StateTypeName(spec.Name, kind), module.Type)
+			fmt.Fprintf(&clientRules, "(allow ext_client_p %s (fs_classes (rw)))\n", StateTypeName(spec.Name, kind))
 		}
 	}
 
+	if clientRules.Len() > 0 {
+		boolean := ClientsBooleanName(spec.Name)
+
+		module.Content += fmt.Sprintf("(boolean %s false)\n(booleanif %s (true\n%s(allow ext_client_p %s (unix_stream_socket (connectto)))\n))\n",
+			boolean, boolean, clientRules.String(), module.Type)
+	}
+
 	return module, nil
+}
+
+// ClientsBooleanName returns the name of the boolean which lets the client pod domains reach the state of the service.
+func ClientsBooleanName(name string) string {
+	return strings.TrimSuffix(TypeName(name), "_t") + "_clients"
 }
 
 // grant is what a domain gets on a type: the fs_classes set of its mounts, ro or rw, and other permission sets,

@@ -11,8 +11,12 @@
 (allow ext_agent_t ext_agent_state_t (fs_classes (rw))) ; /var/lib/agent
 (allow ext_agent_t sys_storage_t (fs_classes (rw))) ; container.security.writeableSysfs
 (allow ext_agent_t sysfs_t (fs_classes (rw))) ; container.security.writeableSysfs
-; a pod domain reaching the service: (allow <pod_type> ext_agent_state_t (fs_classes (rw))) (allow <pod_type> ext_agent_t (unix_stream_socket (connectto)))
-; a pod domain reaching the service: (allow <pod_type> ext_agent_run_t (fs_classes (rw))) (allow <pod_type> ext_agent_t (unix_stream_socket (connectto)))
+(boolean ext_agent_clients false)
+(booleanif ext_agent_clients (true
+(allow ext_client_p ext_agent_state_t (fs_classes (rw)))
+(allow ext_client_p ext_agent_run_t (fs_classes (rw)))
+(allow ext_client_p ext_agent_t (unix_stream_socket (connectto)))
+))
 ;; label /run/agent ext_agent_run_t
 ;; label /var/lib/agent ext_agent_state_t
 

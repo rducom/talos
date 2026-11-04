@@ -195,9 +195,22 @@ func TestGenerateCompiles(t *testing.T) {
 
 	require.NoError(t, compile(t, secilc, contents))
 
+	// the clients boolean of the service grants its state to the CSI node plugin domain
+	contents["clients"] = "(neverallow pod_csi_t ext_agent_state_t (file (read)))\n"
+
+	require.ErrorContains(t, compile(t, secilc, contents), "neverallow check failed")
+
+	delete(contents, "clients")
+
 	contents["extra"] = "(allow ext_agent_t system_state_t (fs_classes (ro)))\n"
 
 	require.ErrorContains(t, compile(t, secilc, contents), "neverallow check failed")
+}
+
+func TestClientsBooleanName(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "ext_iscsi_tools_clients", extgen.ClientsBooleanName("iscsi-tools"))
 }
 
 // compile compiles the policy sources of the tree with the modules, by name, as the imager does.
@@ -216,8 +229,10 @@ func compile(t *testing.T, secilc string, modules map[string]string) error {
 		files = append(files, file)
 	}
 
-	output, err := exec.CommandContext(t.Context(), secilc, append([]string{"-c", "33", "-O", "-o", filepath.Join(dir, "policy.33"),
-		"-f", filepath.Join(dir, "file_contexts")}, files...)...).CombinedOutput()
+	output, err := exec.CommandContext(t.Context(), secilc, append([]string{
+		"-c", "33", "-O", "-o", filepath.Join(dir, "policy.33"),
+		"-f", filepath.Join(dir, "file_contexts"),
+	}, files...)...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, output)
 	}

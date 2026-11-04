@@ -21,6 +21,10 @@
     (typeattributeset ext_state_a ARG1)
     (allow ARG1 tmpfs_t (filesystem (associate)))
 )
+; The pod domains a boolean of a service lets into its state: a CSI node plugin, and a privileged container, as most of them
+; run.
+(typeattribute ext_client_p)
+(typeattributeset ext_client_p (or pod_csi_t pod_privileged_t))
 (type ext_state_t)
 (call ext_state_f (ext_state_t))
 (type ext_run_t)

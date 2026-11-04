@@ -31,6 +31,7 @@ import (
 
 	"github.com/siderolabs/talos/cmd/talosctl/pkg/talos/helpers"
 	"github.com/siderolabs/talos/internal/integration/base"
+	"github.com/siderolabs/talos/internal/pkg/selinux/extgen"
 	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	machineapi "github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
@@ -929,6 +930,69 @@ func (suite *SELinuxSuite) TestExtensionServiceDomains() {
 
 	pid = suite.extensionServicePID(nodeCtx, id, 0)
 	suite.Assert().Equal(selinuxLabel(typ), suite.getLabel(nodeCtx, pid))
+}
+
+// TestExtensionServiceClients reaches the state of an extension service from a CSI node plugin pod: denied and audited
+// until the clients boolean of the service is set, granted afterwards.
+func (suite *SELinuxSuite) TestExtensionServiceClients() {
+	ip, node := suite.labelingNode(true)
+	nodeCtx := client.WithNode(suite.ctx, ip)
+
+	suite.containerExtensionService(nodeCtx)
+
+	modules, err := safe.StateListAll[*runtimeres.SELinuxModule](nodeCtx, suite.Client.State())
+	suite.Require().NoError(err)
+
+	// a service with a state directory under /var, which the kubelet sees as the service does
+	var name, source string
+
+	for module := range modules.All() {
+		for _, path := range slices.Sorted(maps.Keys(module.TypedSpec().Labels)) {
+			if strings.HasPrefix(path, "/var/") {
+				name, source = strings.TrimPrefix(module.Metadata().ID(), runtimeres.SELinuxModuleExtensionPrefix), path
+
+				break
+			}
+		}
+
+		if source != "" {
+			break
+		}
+	}
+
+	if source == "" {
+		suite.T().Skip("skipping SELinux test since no extension service has a state directory of its own under /var")
+	}
+
+	list := func() (string, string, error) {
+		podDef, err := suite.NewPod("selinux-clients")
+		suite.Require().NoError(err)
+
+		podDef = podDef.WithQuiet(true).WithNamespace("kube-system").WithNodeName(node).WithHostVolumeMount(source, "/state").
+			WithSELinuxOptions(&corev1.SELinuxOptions{Type: "pod_csi_t"})
+
+		return suite.exec(podDef, "ls -a /state >/dev/null && echo listed")
+	}
+
+	before := suite.denials(ip, "pod_csi_t")
+
+	stdout, _, _ := list() //nolint:errcheck
+	suite.Assert().Empty(stdout)
+	suite.Assert().Greater(suite.denials(ip, "pod_csi_t"), before)
+
+	boolean := extgen.ClientsBooleanName(name)
+
+	suite.setSELinuxBooleans(nodeCtx, map[string]bool{boolean: true})
+
+	defer suite.setSELinuxBooleans(nodeCtx, nil)
+
+	rtestutils.AssertResource(nodeCtx, suite.T(), suite.Client.State(), boolean, func(status *runtimeres.SELinuxBooleanStatus, asrt *assert.Assertions) {
+		asrt.True(status.TypedSpec().Value)
+	})
+
+	stdout, stderr, err := list()
+	suite.Require().NoError(err, stderr)
+	suite.Assert().Equal("listed\n", stdout)
 }
 
 func selinuxLabel(typ string) string {
