@@ -555,6 +555,9 @@ func (ctrl *Controller) Run(ctx context.Context, drainer *runtime.Drainer) error
 			V1Alpha1Services: system.Services(ctrl.v1alpha1Runtime),
 			ConfigPath:       constants.ExtensionServiceConfigPath,
 		},
+		&runtimecontrollers.ExtensionSELinuxModuleController{
+			ModulesPath: selinux.ExtensionModulesDir,
+		},
 		&runtimecontrollers.ExtensionStatusController{},
 		&runtimecontrollers.ImageFactorySchematicController{},
 		&runtimecontrollers.KernelCmdlineController{

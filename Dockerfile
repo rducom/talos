@@ -838,6 +838,8 @@ COPY --chmod=0644 hack/nfsmount.conf /rootfs/etc/nfsmount.conf
 COPY --chmod=0644 hack/selinux/virtual_domain_context hack/selinux/virtual_image_context /rootfs/etc/selinux/targeted/contexts/
 COPY --link --chmod=0644 --from=selinux-generate /policy/file_contexts /rootfs/etc/selinux/targeted/contexts/files/file_contexts
 COPY --chmod=0644 hack/selinux/containers_contexts /rootfs/usr/share/containers/selinux/contexts
+# the policy sources, which the imager compiles the modules of the extension services with
+COPY --link internal/pkg/selinux/policy/selinux /rootfs/usr/share/selinux/talos
 COPY --chmod=0644 hack/containerd.toml /rootfs/etc/containerd/config.toml
 COPY --chmod=0644 hack/cri-containerd.toml /rootfs/etc/cri/containerd.toml
 COPY --chmod=0644 hack/cri-plugin.part /rootfs/etc/cri/conf.d/00-base.part
@@ -931,6 +933,8 @@ COPY --chmod=0644 hack/nfsmount.conf /rootfs/etc/nfsmount.conf
 COPY --chmod=0644 hack/selinux/virtual_domain_context hack/selinux/virtual_image_context /rootfs/etc/selinux/targeted/contexts/
 COPY --link --chmod=0644 --from=selinux-generate /policy/file_contexts /rootfs/etc/selinux/targeted/contexts/files/file_contexts
 COPY --chmod=0644 hack/selinux/containers_contexts /rootfs/usr/share/containers/selinux/contexts
+# the policy sources, which the imager compiles the modules of the extension services with
+COPY --link internal/pkg/selinux/policy/selinux /rootfs/usr/share/selinux/talos
 COPY --chmod=0644 hack/containerd.toml /rootfs/etc/containerd/config.toml
 COPY --chmod=0644 hack/cri-containerd.toml /rootfs/etc/cri/containerd.toml
 COPY --chmod=0644 hack/cri-plugin.part /rootfs/etc/cri/conf.d/00-base.part
@@ -1241,6 +1245,9 @@ LABEL "alpha.talos.dev/version"="${VERSION}"
 LABEL org.opencontainers.image.source=https://github.com/siderolabs/talos
 ENTRYPOINT ["/bin/installer"]
 
+# secilc compiles the SELinux policy of the extension services into the image.
+FROM tools-${TARGETARCH} AS tools-targetarch
+
 # Imager can be thought of as an extended installer.
 # It has the boot artifacts and tools to build any requested talos image with desired modifications and system extensions.
 # Imager is meant to be run outside of talos and the talos installation flow.
@@ -1261,6 +1268,8 @@ COPY --link --exclude=**/*.a --exclude=**/*.la  --exclude=usr/include --exclude=
 COPY --link --from=pkg-pigz / /
 COPY --link --from=pkg-qemu-tools / /
 COPY --link --from=pkg-squashfs-tools / /
+COPY --link --from=tools-targetarch /usr/bin/secilc /usr/bin/secilc
+COPY --link --from=tools-targetarch /usr/lib/libsepol.so.2 /usr/lib/libsepol.so.2
 COPY --link --from=pkg-tar / /
 COPY --link --exclude=**/*.a --exclude=*.a --from=pkg-util-linux /usr/lib/libblkid.* /usr/lib/
 COPY --link --exclude=**/*.a --exclude=*.a --from=pkg-util-linux /usr/lib/libuuid.* /usr/lib/

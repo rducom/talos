@@ -2476,6 +2476,13 @@
           "description": "The environment for the extension service.\n",
           "markdownDescription": "The environment for the extension service.",
           "x-intellij-html-description": "\u003cp\u003eThe environment for the extension service.\u003c/p\u003e\n"
+        },
+        "selinux": {
+          "$ref": "#/$defs/extensions.ServiceSELinux",
+          "title": "selinux",
+          "description": "SELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.\n",
+          "markdownDescription": "SELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.",
+          "x-intellij-html-description": "\u003cp\u003eSELinux settings of the extension service, ignored for a service in host runner mode.\nA change of the settings restarts the service.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -2486,6 +2493,20 @@
         "name"
       ],
       "description": "ExtensionServiceConfig is a extensionserviceconfig document."
+    },
+    "extensions.ServiceSELinux": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "type",
+          "description": "SELinux type the service runs as, in place of the type the imager derives from the service spec.\nIt must be a type of the loaded policy, such as ext_privileged_t, which reaches the devices, the mounts\nand the machined socket of the host. A service does not start with a type the policy does not define:\ntalosctl service ext-\u0026lt;name\u0026gt; says so.\nThe state directories keep the types derived from the spec, ext_\u0026lt;name\u0026gt;_state_t and ext_\u0026lt;name\u0026gt;_run_t:\next_t and ext_privileged_t reach the state of every service, a derived type its own only.\n",
+          "markdownDescription": "SELinux type the service runs as, in place of the type the imager derives from the service spec.\nIt must be a type of the loaded policy, such as `ext_privileged_t`, which reaches the devices, the mounts\nand the machined socket of the host. A service does not start with a type the policy does not define:\n`talosctl service ext-\u003cname\u003e` says so.\nThe state directories keep the types derived from the spec, `ext_\u003cname\u003e_state_t` and `ext_\u003cname\u003e_run_t`:\n`ext_t` and `ext_privileged_t` reach the state of every service, a derived type its own only.",
+          "x-intellij-html-description": "\u003cp\u003eSELinux type the service runs as, in place of the type the imager derives from the service spec.\nIt must be a type of the loaded policy, such as \u003ccode\u003eext_privileged_t\u003c/code\u003e, which reaches the devices, the mounts\nand the machined socket of the host. A service does not start with a type the policy does not define:\n\u003ccode\u003etalosctl service ext-\u0026lt;name\u0026gt;\u003c/code\u003e says so.\nThe state directories keep the types derived from the spec, \u003ccode\u003eext_\u0026lt;name\u0026gt;_state_t\u003c/code\u003e and \u003ccode\u003eext_\u0026lt;name\u0026gt;_run_t\u003c/code\u003e:\n\u003ccode\u003eext_t\u003c/code\u003e and \u003ccode\u003eext_privileged_t\u003c/code\u003e reach the state of every service, a derived type its own only.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "ServiceSELinux is the SELinux settings of an extension service."
     },
     "hardware.CPUScalingConfigV1Alpha1": {
       "properties": {

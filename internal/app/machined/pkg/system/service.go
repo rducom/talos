@@ -22,7 +22,8 @@ type Service interface {
 	PreFunc(context.Context, runtime.Runtime) error
 	// Runner creates runner for the service
 	Runner(runtime.Runtime) (runner.Runner, error)
-	// PostFunc is invoked after a runner is closed.
+	// PostFunc undoes what PreFunc set up: it is invoked whenever PreFunc succeeded, after the runner is closed, when
+	// the service is skipped, or when its runner could not be created.
 	PostFunc(runtime.Runtime, events.ServiceState) error
 	// Condition describes the conditions under which a service should
 	// start.

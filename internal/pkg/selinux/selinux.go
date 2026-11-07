@@ -8,6 +8,8 @@ package selinux
 import (
 	"bytes"
 	_ "embed"
+	"errors"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,6 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/siderolabs/talos/internal/pkg/containermode"
+	"github.com/siderolabs/talos/internal/pkg/selinux/fcontext"
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/xfs"
 )
@@ -31,6 +34,25 @@ const CommitPendingBoolsPath = "/sys/fs/selinux/commit_pending_bools"
 
 //go:embed policy/policy.33
 var policy []byte
+
+const (
+	// PolicyDir holds the sources of the policy, which the imager compiles the modules of the extension services with.
+	PolicyDir = "/usr/share/selinux/talos"
+	// ExtensionModulesDir holds the modules the imager derived from the specs of the extension services.
+	ExtensionModulesDir = PolicyDir + "/extensions"
+	// ImagePolicy is the policy the imager compiled from the sources with the modules of the extension services.
+	ImagePolicy = PolicyDir + "/policy.33"
+)
+
+// FileContexts is the file_contexts of the policy the image build compiled from the same sources.
+//
+//go:embed policy/file_contexts
+var FileContexts []byte
+
+// FileContextRules parses FileContexts once.
+var FileContextRules = sync.OnceValues(func() ([]fcontext.Rule, error) {
+	return fcontext.Parse(bytes.NewReader(FileContexts))
+})
 
 // IsEnabled checks if SELinux is enabled on the system by reading
 // the kernel command line. It returns true if SELinux is enabled,
@@ -81,6 +103,21 @@ func GetLabel(filename string) (string, error) {
 	}
 
 	return string(bytes.Trim(label, "\x00\n")), nil
+}
+
+// Label returns the context of a process running as the type.
+func Label(typ string) string {
+	return "system_u:system_r:" + typ + ":s0"
+}
+
+// FileLabel returns the context of a file of the type.
+func FileLabel(typ string) string {
+	return "system_u:object_r:" + typ + ":s0"
+}
+
+// CheckContext asks the kernel whether the context is valid under the loaded policy.
+func CheckContext(label string) error {
+	return os.WriteFile("/sys/fs/selinux/context", []byte(label), 0o600)
 }
 
 // SetLabel sets label for file, directory or symlink (not following symlinks)
@@ -186,16 +223,28 @@ func FSetLabel(root xfs.Root, filename string, label string, excludeLabels ...st
 	return nil
 }
 
-// SetLabelRecursive sets label for directory and its content recursively.
+// setLabel is SetLabel, replaced in tests.
+var setLabel = SetLabel
+
+// SetLabelRecursive sets label for directory and its content recursively, the directory itself last, so that its label
+// tells the whole tree carries it.
 // It does not perform the operation in case SELinux is disabled, provided label is empty or already set.
 func SetLabelRecursive(dir string, label string, excludeLabels ...string) error {
 	if label == "" || !IsEnabled() {
 		return nil
 	}
 
-	return filepath.Walk(dir, func(path string, _ os.FileInfo, err error) error {
-		return SetLabel(path, label, excludeLabels...)
-	})
+	if err := filepath.Walk(dir, func(path string, _ os.FileInfo, err error) error {
+		if err != nil || path == dir {
+			return err
+		}
+
+		return setLabel(path, label, excludeLabels...)
+	}); err != nil {
+		return err
+	}
+
+	return setLabel(dir, label, excludeLabels...)
 }
 
 // Init initializes SELinux based on the configured mode.
@@ -213,11 +262,27 @@ func Init() error {
 
 	log.Println("selinux: loading policy")
 
-	if err := os.WriteFile("/sys/fs/selinux/load", policy, 0o777); err != nil {
+	boot, err := BootPolicy(ImagePolicy)
+	if err != nil {
+		return err
+	}
+
+	if err = os.WriteFile("/sys/fs/selinux/load", boot, 0o777); err != nil {
 		return err
 	}
 
 	log.Println("selinux: policy loaded")
 
 	return nil
+}
+
+// BootPolicy returns the policy init loads: the one the imager compiled at path with the modules of the extension services,
+// or the base policy when the image carries no extension service.
+func BootPolicy(path string) ([]byte, error) {
+	image, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return policy, nil
+	}
+
+	return image, err
 }

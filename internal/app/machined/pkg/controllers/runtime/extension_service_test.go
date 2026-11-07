@@ -31,8 +31,29 @@ type serviceMock struct {
 	mu           sync.Mutex
 	services     map[string]system.Service
 	running      map[string]bool
+	runners      map[string]string
 	timesStarted map[string]int
 	timesStopped map[string]int
+}
+
+// runnerMock reports the config version a service created its runner with, as services.Extension does.
+type runnerMock struct {
+	system.Service
+
+	version string
+	created bool
+}
+
+func (mock runnerMock) ConfigVersion() (string, bool) {
+	return mock.version, mock.created
+}
+
+// createRunner records that the service created its runner with the given config version.
+func (mock *serviceMock) createRunner(id, version string) {
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+
+	mock.runners[id] = version
 }
 
 func (mock *serviceMock) Load(services ...system.Service) []string {
@@ -71,8 +92,9 @@ func (mock *serviceMock) IsRunning(id string) (system.Service, bool, error) {
 	}
 
 	_, running := mock.running[id]
+	version, created := mock.runners[id]
 
-	return svc, running, nil
+	return runnerMock{Service: svc, version: version, created: created}, running, nil
 }
 
 func (mock *serviceMock) Stop(ctx context.Context, serviceIDs ...string) error {
@@ -134,6 +156,7 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 	svcMock := &serviceMock{
 		services:     map[string]system.Service{},
 		running:      map[string]bool{},
+		runners:      map[string]string{},
 		timesStarted: map[string]int{},
 		timesStopped: map[string]int{},
 	}
@@ -175,11 +198,9 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 		svcMock.getTimesStartedStopped(),
 	)
 
-	helloConfig := runtime.NewExtensionServiceConfigStatusSpec(runtime.NamespaceName, "hello-world")
-	helloConfig.TypedSpec().SpecVersion = "1"
-	suite.Create(helloConfig)
+	assertTimesStartedStopped := func(hello, frr serviceStartStopInfo) {
+		expected := map[string]serviceStartStopInfo{"ext-hello-world": hello, "ext-frr": frr}
 
-	assertTimesStartedStopped := func(expected map[string]serviceStartStopInfo) {
 		suite.AssertWithin(5*time.Second, 100*time.Millisecond, func() error {
 			actual := svcMock.getTimesStartedStopped()
 
@@ -191,60 +212,49 @@ func (suite *ExtensionServiceSuite) TestReconcile() {
 		})
 	}
 
-	// specVersion is 1, and ext-hello-world is already started, so it should not be restarted
-	assertTimesStartedStopped(map[string]serviceStartStopInfo{
-		"ext-hello-world": {
-			started: 1,
-			stopped: 0,
-		},
-		"ext-frr": {
-			started: 1,
-		},
-	})
+	// ext-hello-world created its runner before its config existed: the first version of the config restarts it
+	svcMock.createRunner("ext-hello-world", "")
+
+	helloConfig := runtime.NewExtensionServiceConfigStatusSpec(runtime.NamespaceName, "hello-world")
+	helloConfig.TypedSpec().SpecVersion = "1"
+	suite.Create(helloConfig)
+
+	assertTimesStartedStopped(serviceStartStopInfo{started: 2, stopped: 1}, serviceStartStopInfo{started: 1})
+
+	// ext-frr has not created its runner yet, it applies its config when it does
+	frrConfig := runtime.NewExtensionServiceConfigStatusSpec(runtime.NamespaceName, "frr")
+	frrConfig.TypedSpec().SpecVersion = "1"
+	suite.Create(frrConfig)
 
 	unexpectedConfig := runtime.NewExtensionServiceConfigStatusSpec(runtime.NamespaceName, "unexpected")
 	unexpectedConfig.TypedSpec().SpecVersion = "1"
 	suite.Create(unexpectedConfig)
 
-	assertTimesStartedStopped(map[string]serviceStartStopInfo{
-		"ext-hello-world": {
-			started: 1,
-			stopped: 0,
-		},
-		"ext-frr": {
-			started: 1,
-		},
-	})
+	// the runner of ext-hello-world applied version 1, version 2 restarts it
+	svcMock.createRunner("ext-hello-world", "1")
 
-	// update config for hello service
 	ctest.UpdateWithConflicts(suite, helloConfig, func(r *runtime.ExtensionServiceConfigStatus) error {
 		r.TypedSpec().SpecVersion = "2"
 
 		return nil
 	})
 
-	assertTimesStartedStopped(map[string]serviceStartStopInfo{
-		"ext-hello-world": {
-			started: 2,
-			stopped: 1,
-		},
-		"ext-frr": {
-			started: 1,
-		},
+	assertTimesStartedStopped(serviceStartStopInfo{started: 3, stopped: 2}, serviceStartStopInfo{started: 1})
+
+	// the runner of ext-frr was created with version 2 by the time the controller sees it
+	svcMock.createRunner("ext-frr", "2")
+
+	ctest.UpdateWithConflicts(suite, frrConfig, func(r *runtime.ExtensionServiceConfigStatus) error {
+		r.TypedSpec().SpecVersion = "2"
+
+		return nil
 	})
 
 	// destroy config for hello service
+	svcMock.createRunner("ext-hello-world", "2")
 	suite.Destroy(helloConfig)
 
-	assertTimesStartedStopped(map[string]serviceStartStopInfo{
-		"ext-hello-world": {
-			started: 3,
-			stopped: 2,
-		},
-		"ext-frr": {
-			started: 1,
-		},
-	})
+	assertTimesStartedStopped(serviceStartStopInfo{started: 4, stopped: 3}, serviceStartStopInfo{started: 1})
 }
 
 func TestExtensionServiceSuite(t *testing.T) {

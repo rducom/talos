@@ -392,6 +392,38 @@ func TestExtensionHostRunnerConfig(t *testing.T) {
 	assert.EqualError(t, err, "extension service config files are not supported in host runner mode")
 }
 
+func TestExtensionConfigVersion(t *testing.T) {
+	rt := newExtensionRuntime(t)
+	svc := &services.Extension{
+		Spec: extservices.Spec{
+			Name:       "hello",
+			RunnerMode: extservices.RunnerModeHost,
+			Container:  extservices.Container{Entrypoint: "/usr/local/bin/hello"},
+		},
+	}
+
+	_, created := svc.ConfigVersion()
+	assert.False(t, created)
+
+	_, err := svc.Runner(rt)
+	require.NoError(t, err)
+
+	version, created := svc.ConfigVersion()
+	assert.True(t, created)
+	assert.Empty(t, version)
+
+	status := runtimeres.NewExtensionServiceConfigStatusSpec(runtimeres.NamespaceName, "hello")
+	status.TypedSpec().SpecVersion = "3"
+	require.NoError(t, rt.State().V1Alpha2().Resources().Create(t.Context(), status))
+
+	_, err = svc.Runner(rt)
+	require.NoError(t, err)
+
+	version, created = svc.ConfigVersion()
+	assert.True(t, created)
+	assert.Equal(t, "3", version)
+}
+
 func TestExtensionContainerRunnerModeDefault(t *testing.T) {
 	svc := &services.Extension{}
 
@@ -411,4 +443,15 @@ func TestExtensionHostRunnerRejectsRelativeEntrypoint(t *testing.T) {
 
 	_, err := svc.HostProcessArgs()
 	assert.EqualError(t, err, "host runner entrypoint must be an absolute path: \"usr/local/bin/hello\"")
+}
+
+// TestExtensionRelabelable: a state directory is taken over from its filesystem type or a previous extension type only.
+func TestExtensionRelabelable(t *testing.T) {
+	for label, want := range map[string]bool{
+		constants.EphemeralSelinuxLabel:              true,
+		"system_u:object_r:ext_tailscale_state_t:s0": true,
+		constants.KubeletDataSELinuxLabel:            false,
+	} {
+		assert.Equal(t, want, services.Relabelable(label), label)
+	}
 }
